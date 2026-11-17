@@ -25,6 +25,29 @@ npm run benchmark  # Node上のCPUシミュレーション性能測定
 
 推奨環境は、ハードウェアアクセラレーションが有効なWindows/macOSの最新ChromeまたはEdgeです。WebGPUを実装した他のブラウザでも利用できます。`localhost` / `127.0.0.1` またはHTTPSのsecure contextが必要です。GPU・ドライバ・ブラウザのポリシーによって利用できない場合は、画面に原因と推奨環境を表示します。WebGLへの代替実装はありません。
 
+## GitHub Pagesへの公開
+
+このアプリは静的ファイルだけで動作し、バックエンドは不要です。`shuichi/fluxity` の標準の公開先は **https://shuichi.github.io/fluxity/** です。
+
+1. リポジトリの [Settings → Pages](https://github.com/shuichi/fluxity/settings/pages) を開き、**Build and deployment → Source** を **GitHub Actions** にします。
+2. [公開用ワークフロー](.github/workflows/deploy-pages.yml) を含む変更を `main` にコミット・pushします。
+
+   ```sh
+   git add .github/workflows/deploy-pages.yml README.md
+   git commit -m "Add GitHub Pages deployment"
+   git push origin main
+   ```
+
+3. [Actions](https://github.com/shuichi/fluxity/actions) の **Deploy to GitHub Pages** が成功したら、公開URLを開きます。ワークフローを先にpushした場合は、Pages設定後に **Run workflow** から `main` を選んで実行できます。
+
+以後は `main` へのpushで自動更新します。Node.js 24で `npm ci` → `npm test` → `npm run build` を実行し、成功したときだけ `dist/` を公開します。`dist/` のコミットや、個人アクセストークン・追加Secretsの登録は不要です。
+
+Viteの `base: './'` により、JavaScript・CSS・favicon・Workerを `/fluxity/` 配下から読み込めます。WebGPUにはHTTPSと対応ブラウザ・GPUが必要です。公開URLは `https://` で開いてください。SharedArrayBufferを使わないため、追加のCOOP / COEPヘッダー設定は不要です。
+
+公開処理が失敗した場合はActionsの失敗したステップを確認してください。`Configure Pages` で失敗する場合はSourceが **GitHub Actions** になっているか、`Deploy to GitHub Pages` で権限エラーになる場合は `github-pages` 環境の保護ルールで `main` が許可されているかを確認します。
+
+参考：[GitHub公式のカスタムワークフロー手順](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Viteの相対base設定](https://vite.dev/guide/build#relative-base)。
+
 ## 操作
 
 - 左ドラッグ：カメラ回転。右ドラッグ：平行移動。ホイール：ズーム。
