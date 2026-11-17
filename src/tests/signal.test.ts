@@ -1,0 +1,148 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_CONFIG, FIXED_DT, SNAPSHOT_STRIDE } from '../types';
+import { getScenario } from '../scenarios';
+import { Navigation } from '../simulation/Navigation';
+import { Simulation } from '../simulation/Simulation';
+import { SIGNAL_GREEN_SECONDS, SIGNAL_RED_SECONDS, TrafficSignal } from '../simulation/TrafficSignal';
+
+function pedestrian(mode: 'red' | 'green', z = -19): Simulation {
+  const simulation = new Simulation({ ...DEFAULT_CONFIG, scenario: 'shibuya', count: 1, signalMode: mode });
+  const a = simulation.agents;
+  a.current.x[0] = -27; a.current.z[0] = z;
+  a.current.vx[0] = 0; a.current.vz[0] = 1.35;
+  a.current.heading[0] = 0;
+  a.targetId[0] = 2; a.targetX[0] = -27; a.targetZ[0] = 52;
+  return simulation;
+}
+
+describe('scramble pedestrian signal', () => {
+  it('stops new road entry on red and releases the queue on green', () => {
+    const simulation = pedestrian('red'), a = simulation.agents;
+    for (let i = 0; i < 300; i++) {
+      simulation.step();
+      expect(simulation.navigation.scramble!.isSidewalk(a.current.x[0], a.current.z[0], a.radius[0])).toBe(true);
+    }
+    expect(simulation.signal?.phase).toBe('red');
+    expect(simulation.signal?.waiting).toBe(1);
+    expect(simulation.signal?.crossing).toBe(0);
+    expect(Math.hypot(a.current.vx[0], a.current.vz[0])).toBeLessThan(0.04);
+    const stoppedZ = a.current.z[0];
+    simulation.updateSettings({ signalMode: 'green' });
+    expect(simulation.signal?.phase).toBe('green');
+    expect(simulation.signal?.waiting).toBe(0);
+    for (let i = 0; i < 60; i++) simulation.step();
+    expect(a.current.z[0]).toBeGreaterThan(stoppedZ + 1);
+    expect(simulation.signal?.crossing).toBe(1);
+  });
+  it('lets pedestrians already on the road finish when the light becomes red', () => {
+    const simulation = pedestrian('green', -8), a = simulation.agents;
+    simulation.step();
+    expect(simulation.signal?.crossing).toBe(1);
+    simulation.updateSettings({ signalMode: 'red' });
+    const before = a.current.z[0];
+    simulation.step();
+    expect(a.current.z[0]).toBeGreaterThan(before);
+    for (let i = 0; i < 850; i++) {
+      simulation.step();
+      expect(simulation.navigation.isFree(a.current.x[0], a.current.z[0], a.radius[0])).toBe(true);
+    }
+    expect(simulation.signal?.phase).toBe('red');
+    expect(a.current.z[0]).toBeGreaterThan(20);
+    expect(simulation.signal?.crossing).toBe(0);
+  });
+  it('lets a waiting pedestrian yield while another pedestrian clears the curb', () => {
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 2, signalMode: 'red' });
+    const a = simulation.agents;
+    a.current.x.fill(-27); a.current.z.set([17.6, 18.5]);
+    a.current.vx.fill(0); a.current.vz.set([1.3, 0]);
+    a.targetId.set([2, 0]); a.targetX.fill(-27); a.targetZ.set([52, -52]);
+    for (let step = 0; step < 240; step++) {
+      simulation.step();
+      expect(simulation.navigation.scramble!.isSidewalk(a.current.x[1], a.current.z[1], a.radius[1])).toBe(true);
+    }
+    expect(a.current.z[0]).toBeGreaterThan(23);
+    expect(simulation.signal?.crossing).toBe(0);
+    expect(simulation.signal?.waiting).toBe(1);
+  });
+  it('uses the simulation clock for the automatic cycle and supports immediate manual override', () => {
+    const signal = new TrafficSignal();
+    signal.update(0); expect(signal.state.phase).toBe('red');
+    expect(signal.state.remaining).toBeCloseTo(SIGNAL_RED_SECONDS);
+    signal.update(SIGNAL_RED_SECONDS - FIXED_DT); expect(signal.state.phase).toBe('red');
+    signal.update(SIGNAL_RED_SECONDS); expect(signal.state.phase).toBe('green');
+    expect(signal.state.remaining).toBeCloseTo(SIGNAL_GREEN_SECONDS);
+    signal.update(SIGNAL_RED_SECONDS + SIGNAL_GREEN_SECONDS); expect(signal.state.phase).toBe('red');
+    signal.setMode('green', 1); expect(signal.state.phase).toBe('green'); expect(signal.state.remaining).toBeNull();
+    signal.setMode('red', 25); expect(signal.state.phase).toBe('red');
+    signal.setMode('auto', 25); expect(signal.state.phase).toBe('green');
+    const simulation = pedestrian('red');
+    const clock = simulation.time;
+    simulation.updateSettings({ signalMode: 'green', simulationSpeed: 2 });
+    expect(simulation.time).toBe(clock); expect(simulation.signal?.phase).toBe('green');
+  });
+  it('is deterministic across signal cycles and has no red incursions in a dense queue', () => {
+    const first = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'red' });
+    const second = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'red' });
+    for (let step = 0; step < 300; step++) { first.step(); second.step(); }
+    const left = new Float32Array(first.agents.count * SNAPSHOT_STRIDE), right = new Float32Array(left.length);
+    first.writeSnapshot(left); second.writeSnapshot(right);
+    expect(left).toEqual(right);
+    for (let i = 0; i < first.agents.count; i++) {
+      expect(first.navigation.scramble!.isSidewalk(first.agents.current.x[i], first.agents.current.z[i], first.agents.radius[i])).toBe(true);
+    }
+    expect(first.signal?.waiting).toBeGreaterThan(0);
+  });
+});
+
+describe('shared scramble navigation geometry', () => {
+  it('preserves forward motion when avoidance pushes a pedestrian against a zebra edge', () => {
+    const geometry = new Navigation(getScenario('shibuya')).scramble!;
+    const result = { x: 0, z: 0 };
+    geometry.constrain(-22.26, 0, -22.20, 0.06, 0.25, false, result);
+    expect(geometry.isWalkable(result.x, result.z, 0.25)).toBe(true);
+    expect(result.x).toBeCloseTo(-22.25);
+    expect(result.z).toBeCloseTo(0.06);
+    geometry.constrain(-27, -18.26, -26.94, -18.20, 0.25, true, result);
+    expect(geometry.isSidewalk(result.x, result.z, 0.25)).toBe(true);
+    expect(result.x).toBeCloseTo(-26.94);
+    expect(result.z).toBeCloseTo(-18.25);
+  });
+  it('admits only sidewalks and the five zebra corridors, including the diagonal', () => {
+    const navigation = new Navigation(getScenario('shibuya'));
+    expect(navigation.isFree(0, 70)).toBe(false);
+    expect(navigation.isFree(70, 0)).toBe(false);
+    expect(navigation.isFree(-27, 0)).toBe(true);
+    expect(navigation.isFree(0, -27)).toBe(true);
+    expect(navigation.isFree(0, 0)).toBe(true);
+    expect(navigation.lineOfSight(-27, 27, 27, -27)).toBe(true);
+    expect(navigation.lineOfSight(-27, -27, 27, 27)).toBe(false);
+    for (const field of navigation.fields) for (let cell = 0; cell < navigation.walkable.length; cell++) {
+      if (navigation.walkable[cell]) expect(Number.isFinite(field.costs[cell])).toBe(true);
+    }
+  });
+  it('routes between opposite corners without walking outside painted road crossings', () => {
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1, signalMode: 'green' });
+    const a = simulation.agents;
+    a.current.x[0] = -27; a.current.z[0] = -27; a.current.vx[0] = 0; a.current.vz[0] = 0;
+    a.targetId[0] = 3; a.targetX[0] = 52; a.targetZ[0] = 52;
+    for (let step = 0; step < 5000 && simulation.arrivals === 0; step++) {
+      simulation.step();
+      expect(simulation.navigation.isFree(a.current.x[0], a.current.z[0], a.radius[0])).toBe(true);
+    }
+    expect(simulation.arrivals).toBe(1);
+  });
+  it('keeps 20,000 initialized pedestrians on sidewalks and constrains large green flows', () => {
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 20000, signalMode: 'red' });
+    const a = simulation.agents, geometry = simulation.navigation.scramble!;
+    for (let i = 0; i < a.count; i++) expect(geometry.isSidewalk(a.current.x[i], a.current.z[i], a.radius[i])).toBe(true);
+    for (let step = 0; step < 8; step++) simulation.step();
+    expect(simulation.signal?.crossing).toBe(0);
+    simulation.updateSettings({ signalMode: 'green' });
+    for (let step = 0; step < 45; step++) simulation.step();
+    for (let i = 0; i < a.count; i++) {
+      expect(simulation.navigation.isFree(a.current.x[i], a.current.z[i], a.radius[i])).toBe(true);
+      expect(Number.isFinite(a.current.x[i] + a.current.z[i])).toBe(true);
+      expect(Math.hypot(a.current.vx[i], a.current.vz[i])).toBeLessThanOrEqual(a.preferredSpeed[i] * 1.12 + 0.01);
+    }
+  }, 20000);
+});

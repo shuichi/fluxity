@@ -1,0 +1,239 @@
+import { DEFAULT_CONFIG, FIXED_DT, MAX_AGENTS, SNAPSHOT_STRIDE } from '../types';
+import type { Scenario, SignalState, SimulationConfig, SimulationSettings } from '../types';
+import { Random } from '../math/random';
+import { getScenario } from '../scenarios';
+import { AgentData } from './AgentData';
+import { Navigation } from './Navigation';
+import { SpatialGrid } from './SpatialGrid';
+import { Steering } from './Steering';
+import type { LocalAvoidance } from './Steering';
+import { TrafficSignal } from './TrafficSignal';
+
+const TAU = Math.PI * 2;
+const PALETTE = [
+  [0.20, 0.35, 0.34], [0.79, 0.43, 0.30], [0.88, 0.76, 0.55], [0.33, 0.43, 0.55],
+  [0.71, 0.72, 0.61], [0.35, 0.29, 0.29], [0.87, 0.85, 0.76], [0.55, 0.63, 0.48],
+  [0.71, 0.57, 0.56], [0.28, 0.31, 0.38], [0.74, 0.59, 0.35], [0.48, 0.50, 0.66],
+];
+function finite(value: number, fallback: number, min: number, max: number): number {
+  return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+}
+export interface SimulationStatistics { meanSpeed: number; congestion: number }
+
+/** The CPU-only simulation boundary can be hosted in any worker or replaced by WASM. */
+export class Simulation {
+  readonly agents: AgentData;
+  readonly scenario: Scenario;
+  readonly navigation: Navigation;
+  readonly grid: SpatialGrid;
+  readonly settings: SimulationSettings;
+  readonly random: Random;
+  readonly stats: SimulationStatistics = { meanSpeed: 0, congestion: 0 };
+  readonly avoidance: LocalAvoidance;
+  private readonly traffic: TrafficSignal | undefined;
+  stepCount = 0;
+  time = 0;
+  arrivals = 0;
+  private readonly direction = { x: 0, z: 0 };
+  private readonly velocity = { x: 0, z: 0 };
+  private readonly projected = { x: 0, z: 0 };
+
+  get signal(): SignalState | undefined { return this.traffic?.state; }
+
+  constructor(config: SimulationConfig, avoidance?: LocalAvoidance) {
+    const count = Math.floor(finite(config.count, DEFAULT_CONFIG.count, 1, MAX_AGENTS));
+    this.agents = new AgentData(count); this.scenario = getScenario(config.scenario);
+    this.random = new Random(config.seed); this.navigation = new Navigation(this.scenario);
+    this.grid = new SpatialGrid(this.scenario.bounds, count);
+    this.settings = { simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto' };
+    this.traffic = this.scenario.scramble ? new TrafficSignal() : undefined;
+    this.updateSettings(config);
+    this.avoidance = avoidance ?? new Steering(this.scenario);
+    this.initialize();
+  }
+  updateSettings(settings: Partial<SimulationSettings>): void {
+    if (settings.simulationSpeed !== undefined) this.settings.simulationSpeed = finite(settings.simulationSpeed, 1, 0.1, 4);
+    if (settings.walkingSpeed !== undefined) this.settings.walkingSpeed = finite(settings.walkingSpeed, 1.35, 0, 4);
+    if (settings.avoidanceStrength !== undefined) this.settings.avoidanceStrength = finite(settings.avoidanceStrength, 1, 0, 3);
+    if (settings.signalMode !== undefined) {
+      this.settings.signalMode = settings.signalMode === 'red' || settings.signalMode === 'green' ? settings.signalMode : 'auto';
+      this.traffic?.setMode(this.settings.signalMode, this.time);
+    }
+    for (let i = 0; i < this.agents.count; i++) this.agents.preferredSpeed[i] = this.agents.speedFactor[i] * this.settings.walkingSpeed;
+  }
+  private initialize(): void {
+    const a = this.agents, state = a.current, b = this.scenario.bounds;
+    const heads = new Int32Array(this.grid.counts.length); heads.fill(-1);
+    const next = new Int32Array(a.count); next.fill(-1);
+    for (let i = 0; i < a.count; i++) {
+      a.id[i] = i; a.scale[i] = this.random.range(0.89, 1.13);
+      a.radius[i] = a.scale[i] * 0.25; a.speedFactor[i] = this.random.range(0.8, 1.2);
+      a.preferredSpeed[i] = a.speedFactor[i] * this.settings.walkingSpeed;
+      a.appearance[i] = this.random.int(65535);
+      const color = PALETTE[this.random.int(PALETTE.length)];
+      a.tint.set(color, i * 3);
+      const zoneIndex = i % this.scenario.spawnZones.length, zone = this.scenario.spawnZones[zoneIndex];
+      let x = 0, z = 0, cell = 0;
+      // Deterministic rejection reduces initial overlap; fallback is bounded in dense scenarios.
+      for (let attempt = 0; attempt < 100; attempt++) {
+        x = this.random.range(zone.x - zone.width * 0.5, zone.x + zone.width * 0.5);
+        z = this.random.range(zone.z - zone.depth * 0.5, zone.z + zone.depth * 0.5);
+        x = Math.max(b.minX + 1, Math.min(b.maxX - 1, x)); z = Math.max(b.minZ + 1, Math.min(b.maxZ - 1, z));
+        if (!this.navigation.isFree(x, z, 0.7)) continue;
+        cell = this.grid.cellAt(x, z);
+        let close = false;
+        const cx = cell % this.grid.columns, cz = Math.floor(cell / this.grid.columns);
+        for (let oz = -1; oz <= 1 && !close; oz++) for (let ox = -1; ox <= 1 && !close; ox++) {
+          const nx = cx + ox, nz = cz + oz;
+          if (nx < 0 || nx >= this.grid.columns || nz < 0 || nz >= this.grid.rows) continue;
+          for (let j = heads[nz * this.grid.columns + nx]; j >= 0; j = next[j]) {
+            const dx = state.x[j] - x, dz = state.z[j] - z;
+            const separation = (a.radius[i] + a.radius[j]) * (attempt > 60 ? 0.65 : 1.1);
+            if (dx * dx + dz * dz < separation * separation) { close = true; break; }
+          }
+        }
+        if (!close || attempt > 90) break;
+      }
+      // Even if every random sample hits a building, never accept an invalid final sample.
+      if (!this.navigation.isFree(x, z, a.radius[i] + 0.01)) {
+        let freeCell = this.random.int(this.navigation.walkable.length);
+        while (!this.navigation.walkable[freeCell] || (this.navigation.scramble && !this.navigation.scramble.isSidewalk(
+          b.minX + ((freeCell % this.navigation.columns) + 0.5) * this.navigation.cellSize,
+          b.minZ + (Math.floor(freeCell / this.navigation.columns) + 0.5) * this.navigation.cellSize, 0.7))) {
+          freeCell = (freeCell + 1) % this.navigation.walkable.length;
+        }
+        x = b.minX + ((freeCell % this.navigation.columns) + 0.5) * this.navigation.cellSize;
+        z = b.minZ + (Math.floor(freeCell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
+        cell = this.grid.cellAt(x, z);
+      }
+      state.x[i] = x; state.z[i] = z; next[i] = heads[cell]; heads[cell] = i;
+      const target = this.scenario.spawnTargets?.[zoneIndex] ?? this.random.int(this.scenario.targets.length);
+      this.assignTarget(i, target);
+      this.navigation.direction(x, z, a.targetId[i], a.targetX[i], a.targetZ[i], this.direction);
+      state.heading[i] = Math.atan2(this.direction.x, this.direction.z);
+      state.vx[i] = this.direction.x * a.preferredSpeed[i] * 0.7;
+      state.vz[i] = this.direction.z * a.preferredSpeed[i] * 0.7;
+      state.phase[i] = this.random.range(0, TAU);
+    }
+    this.grid.rebuild(state.x, state.z, a.count);
+  }
+  private assignTarget(id: number, targetId: number): void {
+    const a = this.agents, target = this.scenario.targets[targetId], b = this.scenario.bounds;
+    a.targetId[id] = targetId;
+    let x = target.x, z = target.z;
+    // Spread arrivals across an edge instead of collapsing every flow into a point.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const spread = this.scenario.id === 'plaza' ? 7 : 22;
+      const alongX = Math.abs(target.z) > Math.abs(target.x);
+      x = target.x + (alongX ? this.random.range(-spread, spread) : this.random.range(-2, 2));
+      z = target.z + (alongX ? this.random.range(-2, 2) : this.random.range(-spread, spread));
+      x = Math.max(b.minX + 2, Math.min(b.maxX - 2, x)); z = Math.max(b.minZ + 2, Math.min(b.maxZ - 2, z));
+      if (this.navigation.isFree(x, z, 1)) break;
+      x = target.x; z = target.z;
+    }
+    a.targetX[id] = x; a.targetZ[id] = z;
+  }
+  private nextTarget(id: number): void {
+    const previous = this.agents.targetId[id];
+    if (this.scenario.id === 'shibuya') {
+      this.assignTarget(id, previous ^ 3);
+    } else if (this.scenario.id === 'corridor' || this.scenario.id === 'bottleneck' || this.scenario.id === 'crossing') {
+      this.assignTarget(id, previous ^ 1);
+    } else {
+      let target = this.random.int(this.scenario.targets.length - 1);
+      if (target >= previous) target++;
+      this.assignTarget(id, target);
+    }
+    this.arrivals++;
+  }
+  step(dt = FIXED_DT): void {
+    if (!Number.isFinite(dt) || dt <= 0 || dt > 0.1) throw new RangeError('Simulation step must be between 0 and 0.1 seconds.');
+    const a = this.agents, read = a.current, write = a.next;
+    this.traffic?.update(this.time + dt);
+    const scramble = this.navigation.scramble;
+    const red = this.signal?.phase === 'red';
+    this.grid.rebuild(read.x, read.z, a.count);
+    if (this.avoidance instanceof Steering) this.avoidance.candidateChecks = 0;
+    let totalSpeed = 0, stopped = 0, waiting = 0, crossing = 0;
+    const b = this.scenario.bounds;
+    for (let i = 0; i < a.count; i++) {
+      const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];
+      if (tx * tx + tz * tz < 10) this.nextTarget(i);
+      this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction);
+      // Existing crossers always clear the road. Only curb-side entry is gated by red.
+      const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], a.radius[i]);
+      if (scramble && sidewalkOnly) {
+        const curbDistance = scramble.distanceToCurb(read.x[i], read.z[i], this.direction.x, this.direction.z, a.radius[i]);
+        if (curbDistance < 3) {
+          waiting++;
+          const curb = scramble.halfWidth + a.radius[i] + 0.08;
+          // Brake the desired direction BEFORE avoidance. Waiting pedestrians can
+          // still yield outward/laterally to people clearing the opposite way.
+          if (read.x[i] * this.direction.x < 0) this.direction.x *= Math.max(0, Math.min(1, (Math.abs(read.x[i]) - curb) / 2.2));
+          if (read.z[i] * this.direction.z < 0) this.direction.z *= Math.max(0, Math.min(1, (Math.abs(read.z[i]) - curb) / 2.2));
+        }
+      }
+      a.preferredVX[i] = this.direction.x * a.preferredSpeed[i]; a.preferredVZ[i] = this.direction.z * a.preferredSpeed[i];
+      this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity);
+      let ax = (this.velocity.x - read.vx[i]) / 0.3, az = (this.velocity.z - read.vz[i]) / 0.3;
+      const acceleration = Math.hypot(ax, az);
+      if (acceleration > 3.8) { ax *= 3.8 / acceleration; az *= 3.8 / acceleration; }
+      let vx = read.vx[i] + ax * dt, vz = read.vz[i] + az * dt;
+      const velocityLength = Math.hypot(vx, vz), maxSpeed = a.preferredSpeed[i] * 1.12;
+      // Smoothly decelerate on a lower UI speed limit, without a one-frame velocity jump.
+      const speedLimit = Math.max(maxSpeed, Math.hypot(read.vx[i], read.vz[i]) - 3.8 * dt);
+      if (velocityLength > speedLimit && velocityLength > 0) { vx *= speedLimit / velocityLength; vz *= speedLimit / velocityLength; }
+      const radius = a.radius[i] + 0.015;
+      let x = read.x[i] + vx * dt, z = read.z[i] + vz * dt;
+      x = Math.max(b.minX + radius, Math.min(b.maxX - radius, x));
+      z = Math.max(b.minZ + radius, Math.min(b.maxZ - radius, z));
+      for (const obstacle of this.scenario.obstacles) {
+        const left = obstacle.x - obstacle.width * 0.5 - radius, right = obstacle.x + obstacle.width * 0.5 + radius;
+        const top = obstacle.z - obstacle.depth * 0.5 - radius, bottom = obstacle.z + obstacle.depth * 0.5 + radius;
+        if (x > left && x < right && z > top && z < bottom) {
+          const dl = x - left, dr = right - x, dtp = z - top, db = bottom - z;
+          const minimum = Math.min(dl, dr, dtp, db);
+          if (minimum === dl) x = left;
+          else if (minimum === dr) x = right;
+          else if (minimum === dtp) z = top;
+          else z = bottom;
+        }
+      }
+      if (scramble) {
+        scramble.constrain(read.x[i], read.z[i], x, z, radius, sidewalkOnly, this.projected);
+        x = this.projected.x; z = this.projected.z;
+        if (!scramble.isSidewalk(x, z, a.radius[i])) crossing++;
+      }
+      vx = (x - read.x[i]) / dt; vz = (z - read.z[i]) / dt;
+      const speed = Math.hypot(vx, vz);
+      let heading = read.heading[i];
+      if (speed > 0.045) {
+        const desiredHeading = Math.atan2(vx, vz);
+        let difference = ((desiredHeading - heading + Math.PI) % TAU + TAU) % TAU - Math.PI;
+        difference = Math.max(-3.5 * dt, Math.min(3.5 * dt, difference));
+        heading += difference;
+      }
+      write.x[i] = x; write.z[i] = z; write.vx[i] = vx; write.vz[i] = vz; write.heading[i] = heading;
+      // Unbounded phase avoids interpolation seams; stride length is measured in world meters.
+      write.phase[i] = read.phase[i] + speed * dt * 4.5;
+      a.stalledTime[i] = speed < a.preferredSpeed[i] * 0.2 ? a.stalledTime[i] + dt : 0;
+      totalSpeed += speed;
+      if (speed < a.preferredSpeed[i] * 0.45) stopped++;
+    }
+    a.swap(); this.stepCount++; this.time += dt;
+    this.stats.meanSpeed = totalSpeed / a.count; this.stats.congestion = stopped / a.count;
+    if (this.signal) { this.signal.waiting = waiting; this.signal.crossing = crossing; }
+  }
+  writeSnapshot(target: Float32Array): void {
+    const a = this.agents, state = a.current;
+    if (target.length !== a.count * SNAPSHOT_STRIDE) throw new RangeError('Snapshot has an invalid length.');
+    for (let i = 0; i < a.count; i++) {
+      const offset = i * SNAPSHOT_STRIDE, speed = Math.hypot(state.vx[i], state.vz[i]);
+      target[offset] = state.x[i]; target[offset + 1] = state.z[i]; target[offset + 2] = state.heading[i];
+      target[offset + 3] = speed; target[offset + 4] = state.phase[i]; target[offset + 5] = a.appearance[i];
+      target[offset + 6] = a.scale[i]; target[offset + 7] = speed < 0.06 ? 0 : speed > 2.2 ? 2 : 1;
+      target[offset + 8] = a.tint[i * 3]; target[offset + 9] = a.tint[i * 3 + 1]; target[offset + 10] = a.tint[i * 3 + 2];
+      target[offset + 11] = i;
+    }
+  }
+}
