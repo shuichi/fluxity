@@ -80,7 +80,7 @@ Viteの `base: './'` により、JavaScript・CSS・favicon・Workerを `/fluxit
 - **Environment**：舗装、建物、シナリオ障害物、植栽、Directional / Ambient Lighting、距離フォグ、Instanced Quadの接地影。
 - **UI**：HTML/CSS/TypeScriptのみ。実測の統計と非対応時のエラー表示。
 
-詳細は [docs/architecture.md](docs/architecture.md) を参照してください。
+詳細は [docs/architecture.md](docs/architecture.md) を参照してください。群集の経路探索・局所回避・信号制御の数式と原典は [アルゴリズム解説](docs/algorithms.html) にまとめています。このHTMLは本番ビルドにも含まれ、GitHub Pagesでは `/fluxity/docs/algorithms.html` で公開できます。
 
 ## 計測と性能
 

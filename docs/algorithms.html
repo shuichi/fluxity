@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Fluxityの群集シミュレーションを、実装・数式・原典から解説。Dijkstra法、共有フローフィールド、近傍探索、局所回避、信号制御、固定時間刻み。">
+  <meta name="theme-color" content="#f5f4ee">
+  <title>群集シミュレーションのアルゴリズム — Fluxity</title>
+  <style>
+    :root{color-scheme:light;--paper:#f5f4ee;--card:#fff;--ink:#223630;--muted:#5b6963;--line:#d5ddd5;--accent:#216652;--pale:#eaf2eb;--warm:#f7eee1}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:2rem}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.9 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;overflow-wrap:anywhere}
+    a{color:var(--accent);text-underline-offset:.22em}a:hover{text-decoration-thickness:2px}a:focus-visible{outline:3px solid #ba752f;outline-offset:4px}a.skip{position:absolute;left:1rem;top:-5rem;background:white;padding:.5rem 1rem;z-index:3}a.skip:focus{top:1rem}
+    header{border-bottom:1px solid var(--line);padding:3.5rem max(1.5rem,calc((100vw - 1120px)/2)) 2.5rem;background:linear-gradient(120deg,#edf2e9,var(--paper))}.eyebrow{font-size:.75rem;letter-spacing:.15em;font-weight:750;color:var(--accent);margin:0 0 1rem}.brand{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:2.3rem}.brand a{font-size:.85rem}.brand strong{font-size:1.05rem;letter-spacing:.12em}
+    h1{font-size:clamp(2rem,4.2vw,3.4rem);line-height:1.35;letter-spacing:-.035em;margin:0 0 1rem;max-width:1000px}header .lead{font-size:1.05rem;max-width:850px;margin:1rem 0 1.5rem}.meta{font-size:.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.4rem 1.4rem}
+    .layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:3rem;max-width:1180px;margin:auto;padding:2.5rem 1.5rem 4rem}.toc{align-self:start;position:sticky;top:1.5rem;font-size:.82rem;line-height:1.7}.toc p{font-weight:750;margin:0 0 .8rem}.toc ol{padding-left:1.4rem;margin:0}.toc li{padding:.25rem 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}.toc .sub{margin-top:1rem;border-top:1px solid var(--line);padding-top:.8rem}
+    main{min-width:0}section{margin:0 0 3.6rem;scroll-margin-top:2rem}h2{font-size:1.55rem;line-height:1.5;margin:0 0 1rem;padding-top:.6rem;border-top:2px solid var(--ink);letter-spacing:-.025em}h2 .num{font-size:.8rem;color:var(--accent);display:block;margin:.25rem 0 .2rem;letter-spacing:.1em}h3{font-size:1.12rem;line-height:1.6;margin:1.7rem 0 .55rem}p{margin:.7rem 0 1rem}li{margin:.4rem 0}ul,ol{padding-left:1.4rem}strong{font-weight:720}small,.small{font-size:.82rem;color:var(--muted)}.tag{display:inline-block;padding:.1rem .5rem;border-radius:4px;background:var(--pale);font-size:.72rem;font-weight:700;vertical-align:middle}.cite{font-size:.78em;white-space:nowrap;text-decoration:none;font-weight:700}.code-ref{font-size:.85rem}
+    .note{background:var(--pale);padding:1rem 1.25rem;border-left:3px solid var(--accent);margin:1.2rem 0}.note p:first-child{margin-top:0}.note p:last-child{margin-bottom:0}.note.limit{background:var(--warm);border-color:#aa7134}.source{color:var(--muted);font-size:.8rem;margin-top:.7rem}code{font: .88em/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#e9ede7;padding:.1em .3em;border-radius:3px}pre{background:#20382f;color:#f3f7ef;padding:1.15rem 1.3rem;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.86rem;line-height:1.85;margin:1.1rem 0}pre code{font:inherit;background:none;padding:0;color:inherit}.eq-caption{font-size:.82rem;color:var(--muted);margin-top:-.5rem}
+    .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:1.2rem 0;background:var(--card)}table{width:100%;border-collapse:collapse;font-size:.85rem;line-height:1.75}th,td{text-align:left;vertical-align:top;padding:.75rem .85rem;border-bottom:1px solid var(--line)}th{background:var(--pale);font-weight:700}tr:last-child td{border-bottom:0}caption{text-align:left;font-weight:700;padding:.75rem .85rem;background:var(--card)}td:first-child{min-width:110px}table code{font-size:.9em}.wide{min-width:580px}
+    .pipeline{list-style:none;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.6rem;counter-reset:step;margin:1.3rem 0}.pipeline li{counter-increment:step;margin:0;border:1px solid var(--line);padding:1rem;background:var(--card);border-radius:6px;font-size:.78rem;line-height:1.7}.pipeline li:before{content:counter(step,decimal-leading-zero);display:block;color:var(--accent);font-size:.72rem;font-weight:750;margin-bottom:.4rem}.pipeline strong{display:block;font-size:.88rem;margin-bottom:.25rem}
+    figure{margin:1.5rem 0;padding:1rem;border:1px solid var(--line);border-radius:6px;background:var(--card)}figure svg{display:block;width:100%;height:auto}figcaption{font-size:.8rem;color:var(--muted);line-height:1.7;margin-top:.8rem}.states{display:grid;grid-template-columns:1fr 1fr;gap:1rem}.state{border:1px solid var(--line);border-radius:6px;padding:1rem 1.2rem;background:var(--card)}.state h3{margin:0 0 .5rem}.lamp{display:inline-block;width:.65rem;height:.65rem;border-radius:50%;margin-right:.5rem;background:#ac483c}.lamp.green{background:#25734e}.state p{font-size:.88rem;margin:.4rem 0}
+    dl.symbols{display:grid;grid-template-columns:100px 1fr;gap:.25rem .8rem;font-size:.88rem}dt{font-weight:700}dd{margin:0}.refs{list-style:none;padding:0;counter-reset:ref}.refs li{position:relative;margin:0 0 1.3rem;padding:0 0 1.2rem 3.2rem;border-bottom:1px solid var(--line);font-size:.86rem;line-height:1.8}.refs .ref-id{position:absolute;left:0;font-weight:750;color:var(--accent)}.refs p{margin:.3rem 0 0}.refs cite{font-style:normal;font-weight:650}.refs .use{color:var(--muted);font-size:.8rem}.sources{font-size:.85rem}.sources li{padding:.2rem 0}.sources code{overflow-wrap:anywhere}footer{max-width:1120px;margin:auto;border-top:1px solid var(--line);padding:1.4rem 0 2.5rem;color:var(--muted);font-size:.8rem;display:flex;justify-content:space-between;gap:1rem}
+    .diagram-scroll{overflow-x:auto}.diagram-scroll svg{min-width:600px}.diagram-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+    @media(max-width:920px){.layout{grid-template-columns:1fr;gap:2rem;max-width:850px}.toc{position:static;border:1px solid var(--line);border-radius:6px;padding:1rem 1.3rem}.toc ol{columns:2;column-gap:2rem}.toc li{break-inside:avoid}.toc .sub{display:flex;gap:1rem}header{padding:2rem 1.5rem}footer{margin:0 1.5rem}.brand{margin-bottom:1.6rem}}
+    @media(max-width:540px){body{font-size:15px}.layout{padding:1.5rem 1rem 2rem}header{padding:1.5rem 1rem}.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.states{grid-template-columns:1fr}.toc ol{columns:1}h2{font-size:1.35rem}pre{padding:.9rem;font-size:.78rem}.refs li{padding-left:2.7rem}.meta{display:block}.meta span{display:block}.brand{align-items:flex-start}footer{display:block}dl.symbols{grid-template-columns:70px 1fr}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    @media print{@page{size:A4;margin:16mm}body{background:white;color:#111;font-size:10pt;line-height:1.65}header{padding:0 0 1rem;background:white}.brand{margin-bottom:1rem}.brand a,.toc,.skip{display:none}.layout{display:block;max-width:none;padding:1.5rem 0 0}h1{font-size:25pt}h2{font-size:17pt;break-after:avoid}h3{break-after:avoid}section{margin-bottom:2rem}.note,figure,.state,.pipeline li,.refs li{break-inside:avoid}pre{background:#f2f3f1;color:#111;border:1px solid #bbb;break-inside:avoid;font-size:9pt}.table-wrap{overflow:visible}.wide{min-width:0}thead{display:table-header-group}tr{break-inside:avoid}a{color:inherit}footer{padding:.8rem 0;margin:0}.meta{font-size:9pt}}
+  </style>
+</head>
+<body>
+<a class="skip" href="#main">本文へ移動</a>
+<header>
+  <div class="brand"><strong>FLUXITY</strong><a href="../">シミュレータを開く ↗</a></div>
+  <p class="eyebrow">ALGORITHMS / IMPLEMENTATION NOTES</p>
+  <h1>群集シミュレーションの<br>アルゴリズム</h1>
+  <p class="lead">目的地へ向かう流れ、近くの人を避ける動き、赤信号で生まれる待機列。Fluxityの歩行者が動く仕組みを、実装・数式・原典の対応から説明します。</p>
+  <div class="meta"><span>作成・出典確認：2026年11月17日</span><span>対象コード：<a href="https://github.com/shuichi/fluxity/tree/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3"><code>27e3b045</code></a></span><span>単位：m・s・rad（シミュレーション内）</span></div>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="目次">
+    <p>このドキュメント</p>
+    <ol>
+      <li><a href="#overview">モデルと原典の位置づけ</a></li>
+      <li><a href="#pipeline">1ステップの処理</a></li>
+      <li><a href="#navigation">共有フローフィールド</a></li>
+      <li><a href="#neighbors">近傍を高速に探す</a></li>
+      <li><a href="#steering">局所回避の計算</a></li>
+      <li><a href="#integration">運動と境界の更新</a></li>
+      <li><a href="#signals">渋谷の信号と横断歩道</a></li>
+      <li><a href="#time">時間・補間・データ構造</a></li>
+      <li><a href="#random">初期化と再現性</a></li>
+      <li><a href="#parameters">主要パラメータ</a></li>
+      <li><a href="#limits">検証範囲と限界</a></li>
+      <li><a href="#references">参考文献・原典</a></li>
+    </ol>
+    <div class="sub"><a href="#sources">実装ファイル一覧</a></div>
+  </nav>
+  <main id="main">
+    <section id="overview">
+      <h2><span class="num">01 / MODEL</span>モデルと原典の位置づけ</h2>
+      <p>Fluxityは、一人ひとりを位置・速度・半径・目的地を持つエージェントとして扱う<strong>平面上の微視的群集シミュレーション</strong>です。歩行判断はCPUのWeb Workerで行い、その結果をWebGPUで3Dの人物として描画します。GPU Computeで歩行者の運動を解いているわけではありません。</p>
+      <p>中心となる組み合わせは、<strong>目的地別のDijkstra距離場による大域誘導</strong>と、<strong>近距離反発・前方減速・最近接予測を混合する局所Steering</strong>です。人物は地面上では円として近似され、表示用の腕や脚には独立した衝突判定を行いません。</p>
+      <div class="note"><p><strong>文献の読み方</strong></p><p>以下の引用は、確認したコードを既存のアルゴリズム・研究と対応づけたものです。特定論文の忠実な再現、または開発時にその論文を直接参照したという履歴を主張するものではありません。「アルゴリズムの原典」「設計の系譜」「比較対象」「実装固有のルール」を区別します。</p></div>
+      <div class="table-wrap"><table class="wide">
+        <caption>採用しているものと、比較のために挙げるもの</caption>
+        <thead><tr><th scope="col">手法</th><th scope="col">Fluxityでの位置づけ</th><th scope="col">出典</th></tr></thead>
+        <tbody>
+          <tr><td>Dijkstra法</td><td>非負重みの8近傍グラフで、目的地から各セルへの距離を計算。実際に採用。</td><td><a class="cite" href="#ref-1">[1]</a></td></tr>
+          <tr><td>Flow Field</td><td>複数人が同じ目的地の距離場・方向場を共有。Emersonのゲーム向け手法と共通する設計。</td><td><a class="cite" href="#ref-2">[2]</a></td></tr>
+          <tr><td>Steering / Boids</td><td>Reynoldsの自律エージェント・局所行動の系譜。分離に似た反発を使うが、Boidsの整列・結合は実装しない。</td><td><a class="cite" href="#ref-3">[3]</a> <a class="cite" href="#ref-4">[4]</a></td></tr>
+          <tr><td>Velocity Obstacles / ORCA</td><td>相対速度で衝突を予測する発想を比較。速度障害領域の構築、ORCAの半平面制約・線形計画は実装しない。</td><td><a class="cite" href="#ref-5">[5]</a> <a class="cite" href="#ref-6">[6]</a></td></tr>
+          <tr><td>Social Force / Continuum Crowds</td><td>群集研究の比較対象。Social Forceの力モデルや、密度・速度場を連成させる連続体モデルは実装しない。</td><td><a class="cite" href="#ref-7">[7]</a> <a class="cite" href="#ref-8">[8]</a></td></tr>
+          <tr><td>信号・右側通行・滞留脱出</td><td>このデモのためのルールと調整値。実測された渋谷の歩行者行動・信号制御モデルではない。</td><td><a href="#signals">§7</a></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="pipeline">
+      <h2><span class="num">02 / PIPELINE</span>1ステップの処理</h2>
+      <p>通常の実行では、以下を<strong>1/30秒</strong>ずつ進めます。人物の位置・速度は全員分を読み取り用の状態から参照し、計算結果を別の状態に書いて、最後に交換します。</p>
+      <ol class="pipeline">
+        <li><strong>信号を更新</strong>次のシミュレーション時刻で赤・青を判定。</li>
+        <li><strong>空間を索引化</strong>現在位置から近傍探索用のグリッドを再構築。</li>
+        <li><strong>目的地へ誘導</strong>到着判定後、直進または共有方向場を参照。</li>
+        <li><strong>赤信号で減速</strong>歩道上の人の、車道へ向かう成分を弱める。</li>
+        <li><strong>人・壁を回避</strong>近距離反発、追従減速、予測による右寄せを合成。</li>
+        <li><strong>運動を積分</strong>加速度と速度を制限して次の位置を計算。</li>
+        <li><strong>境界を補正</strong>建物・歩道・横断歩道の外への移動を修正。</li>
+        <li><strong>状態を交換</strong>向き・歩行位相・統計を更新し、描画へ渡す。</li>
+      </ol>
+      <p class="source">実装：<a href="#src-simulation">Simulation.step</a>、<a href="#src-agents">AgentData.swap</a>。Workerは1回の起動で最大3ステップ進めてから最新状態を送るため、描画用Snapshotは必ずしも全ステップ分届きません。</p>
+    </section>
+
+    <section id="navigation">
+      <h2><span class="num">03 / GLOBAL NAVIGATION</span>目的地を共有するフローフィールド</h2>
+      <h3>歩ける領域をグラフにする</h3>
+      <p>シーンを一辺<strong>1.5m</strong>の格子へ分割し、セル中心が歩けるかを判定します。建物は軸平行長方形（AABB）で表し、格子の通行判定では<strong>0.58m</strong>の余裕を持たせます。渋谷では、さらに歩道・横断歩道の領域内であることを要求します。</p>
+      <p>通行可能セルを頂点、上下左右と斜めの8近傍を辺とするグラフを作ります。辺の重みは直進が1、斜めが√2です。斜め移動では両側の直交セルも通行可能にして、障害物の角を斜めに抜けることを防ぎます。</p>
+      <h3>目的地から逆向きにDijkstra法を実行する</h3>
+      <p>各目的地を始点として、全セルの最小コストを求めます。非負の辺重みに対する最短路法の原典はDijkstra（1959）です。コードでは添字付き二分ヒープを使い、距離が小さいセルを優先して緩和します。<a class="cite" href="#ref-1">[1]</a></p>
+      <pre><code>D(goal) = 0、その他の D = ∞
+未処理の最小 D を持つセル u を取り出す
+  各通行可能な隣接セル v について
+    D(v) ← min(D(v), D(u) + w(u,v))
+w = 1（直交）または √2（斜め）</code></pre>
+      <p class="eq-caption">コードでは浮動小数の比較に10⁻⁴の許容値を使用。格納するDはセル単位のコストであり、そのままメートルではありません。</p>
+      <p>得られた距離場から、各セルの周囲で<strong>Dが最も小さい隣接セル</strong>を選び、その方向を正規化して保存します。人数分の経路を毎回探索せず、同じ目的地の人物が場を参照できます。目的地数をT、セル数をVとすると、構築は概ね<strong>O(TV log V)</strong>、場の保存は<strong>O(TV)</strong>です。</p>
+      <h3>直線で行けるときは個別の目標へ向かう</h3>
+      <p>実行時には、人物ごとに少し分散させた目標位置への見通しを調べ、通れるなら直接その方向へ向かいます。建物との判定は、全員共通の固定0.58mのクリアランスで拡張したAABBに線分が交差するかを調べるスラブ法です。各座標軸で求めたパラメータ区間を交差させる考え方は、PBRTの実装説明でも確認できます。<a class="cite" href="#ref-12">[12]</a></p>
+      <p>見通せない場合だけ保存済みの方向場を使います。通行不可セルにいる場合は周囲5×5セルから、<code>D + 2 × セル間距離</code>が小さい回復先を探します。方向場をセル間で双線形補間する処理はありません。</p>
+      <div class="note limit"><p><strong>距離場と、人物が実際に歩く道筋は区別が必要です。</strong>距離場はDijkstra法で求めますが、方向抽出は <code>argmin D(v)</code> であり、<code>argmin(w(u,v) + D(v))</code> ではありません。直接誘導・目標の分散・局所回避も加わるため、人物の軌跡全体を厳密な最短経路とは呼べません。</p></div>
+      <p>Emerson（2013）は、ゲームで共有するコスト場・積分場・方向場の構成を説明しています。Fluxityはこの設計と共通点を持ちますが、タイル階層・ポータル探索・動的な場の再構築はありません。Treuilleら（2006）のContinuum Crowdsのように群集密度を使って場を毎フレーム更新したり、Eikonal方程式を解いたりもしません。<a class="cite" href="#ref-2">[2]</a> <a class="cite" href="#ref-8">[8]</a></p>
+      <p class="source">実装：<a href="#src-navigation">Navigation.constructor / buildField / direction / lineOfSight</a>。</p>
+    </section>
+
+    <section id="neighbors">
+      <h2><span class="num">04 / SPATIAL QUERY</span>近くの人だけを高速に探す</h2>
+      <p>全員が全員を調べると候補数はO(N²)になります。Fluxityは、経路探索用とは別に、一辺<strong>2.4m</strong>のUniform Gridを使います。空間分割で接近し得る組だけを調べる手法の技術的参考として、Le Grand（2007）のBroad Phase解説を挙げます。これは本実装のCPU版そのものの出典や、Uniform Gridの発明者という意味ではありません。<a class="cite" href="#ref-9">[9]</a></p>
+      <ol>
+        <li>各人物が属するセルを求め、セルごとの人数を数えます。</li>
+        <li>人数の累積和（prefix sum）から、各セルが使う配列区間を求めます。</li>
+        <li>人物IDをセルごとの連続領域へ配置します。比較ソートは使わず、Counting Sort型に並べます。</li>
+      </ol>
+      <p>再構築はO(N+C)です（Cはこの近傍グリッドのセル数）。各人物は自分のセルと周囲8セルを走査し、距離が2.4m以下の相手を局所回避に使用します。配列は再利用され、通常の再構築で人物ごとの配列・オブジェクトを生成しません。</p>
+      <div class="note"><p><strong>上限96は「調べる候補数」です。</strong>自分以外の候補を数えてから距離を判定するので、距離外の人も96件に含まれます。最も近い96人を選ぶ処理ではありません。セル内の開始位置を人物IDで回転させていますが、セルの走査順は固定であり、密集時の偏りや見落としは残ります。</p></div>
+      <p>近傍計算の上限はO(96N)になりますが、この上限は正確さとの交換条件です。予測時間が1.6秒でも、現在2.4mより遠くの相手をすべて先読みするわけではありません。</p>
+      <p class="source">実装：<a href="#src-grid">SpatialGrid.rebuild</a>、<a href="#src-steering">Steering.compute</a>。</p>
+    </section>
+
+    <section id="steering">
+      <h2><span class="num">05 / LOCAL STEERING</span>反発・減速・予測を混ぜる局所回避</h2>
+      <p>ReynoldsのBoids（1987）は局所的な行動から群れの運動を作る代表的な原典で、Steering Behaviors（1999）は目標追従や回避などの行動を整理しています。Fluxityの局所回避はこの系譜に位置づけられますが、以下の係数と組み合わせはコード固有のヒューリスティックです。<a class="cite" href="#ref-3">[3]</a> <a class="cite" href="#ref-4">[4]</a></p>
+      <dl class="symbols"><dt>pᵢ, vᵢ, rᵢ</dt><dd>人物iの位置・現在速度・半径。</dd><dt>dᵢ, sᵢ</dt><dd>誘導方向と個人の希望速度。通常のdᵢは単位ベクトル。</dd><dt>q, R</dt><dd>相対位置 q = pⱼ − pᵢ、半径の和 R = rᵢ + rⱼ。</dd><dt>right(dᵢ)</dt><dd>右向きの成分 (dᵢ.z, −dᵢ.x)。</dd><dt>k</dt><dd>Avoidance設定（0〜3、初期値1）。</dd></dl>
+      <p class="small">赤信号で減速した後のdᵢは、成分を弱めたまま再正規化しません。以下の内積もそのdᵢを使うため、赤信号付近の「前方距離」は厳密な単位方向への射影ではなく、制御上の量です。</p>
+      <h3>5.1 パーソナルスペースの反発</h3>
+      <p>相手までの距離が <code>R + 0.34m</code> 未満なら、相手から離れる成分を足します。これは速度への補正であり、人物同士のめり込みを幾何学的に必ず解消する位置補正ではありません。</p>
+      <pre><code>δ = |q|
+Sᵢⱼ = −(q / δ) × min(2.4, 3.6 × (R + 0.34 − δ))
+Sᵢ = 条件 δ &lt; R + 0.34 を満たす近傍の Sᵢⱼ の総和</code></pre>
+      <p>位置がほぼ一致する場合は、IDの大小で符号が反対になる微小ベクトルを使い、ゼロ除算と完全な対称状態を避けます。</p>
+      <h3>5.2 前の人に追いつくと減速する</h3>
+      <p>前方成分 <code>f = q・dᵢ</code> が0〜1.8m、横方向成分の絶対値が <code>R + 0.2m</code> 未満で、相手との前方速度差が0.15m/sを超える場合に減速します。</p>
+      <pre><code>c = q.x × dᵢ.z − q.z × dᵢ.x
+closing = sᵢ − vⱼ・dᵢ
+b_follow = (1 − f / 1.8) × min(0.85, closing × 0.5)
+brake = 対象となる近傍の b_follow の最大値</code></pre>
+      <h3>5.3 最近接時刻を予測して右へよける</h3>
+      <p>自分が希望速度 <code>sᵢdᵢ</code>、相手が現在速度 <code>vⱼ</code> を維持すると仮定します。相対位置の二乗距離 <code>|q − wt|²</code> をtで微分して0と置くと、最近接時刻t*が得られます。</p>
+      <pre><code>w = sᵢdᵢ − vⱼ
+t* = (q・w) / |w|²
+δ* = |q − wt*|
+u = (1 − t* / 1.6) × (1 − δ* / (R + 0.35))</code></pre>
+      <p><code>f &gt; 0</code>、<code>|w|² &gt; 0.08</code>、<code>0 &lt; t* &lt; 1.6秒</code>、<code>δ* &lt; R + 0.35m</code> のとき、緊急度uを使って右寄せの大きさを <code>max(lateral, 1.25u)</code>、減速を <code>max(brake, 0.3u)</code> に更新します。</p>
+      <figure>
+        <div class="diagram-scroll" role="region" aria-label="最近接予測の模式図（横スクロール可能）" tabindex="0">
+        <svg viewBox="0 0 700 230" role="img" aria-labelledby="prediction-title prediction-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="prediction-title">相対位置から最近接距離を求める図</title><desc id="prediction-desc">人物iを原点とする相対座標。人物jの相対位置qから、相対速度マイナスwの方向へ直線を伸ばし、原点に最も近い点qマイナスw tスターまでの距離を求める。</desc>
+          <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#276650"/></marker></defs>
+          <circle cx="125" cy="160" r="54" fill="#eaf2eb" stroke="#7da18c" stroke-dasharray="5 5"/><circle cx="125" cy="160" r="12" fill="#276650"/>
+          <path d="M535 60H60" stroke="#7a8a80" stroke-width="2" stroke-dasharray="6 5"/>
+          <path d="M535 60H340" stroke="#276650" stroke-width="3" marker-end="url(#arrow)"/>
+          <circle cx="535" cy="60" r="12" fill="#bf783e"/><circle cx="125" cy="60" r="6" fill="#276650"/>
+          <path d="M125 160V60" stroke="#bf783e" stroke-width="2"/><path d="M125 80H145V60" fill="none" stroke="#bf783e"/>
+          <text x="125" y="199" text-anchor="middle" font-size="15" fill="#223630">人物 i（相対座標の原点）</text><text x="540" y="35" text-anchor="middle" font-size="15" fill="#223630">相手の現在位置 q</text>
+          <text x="370" y="88" font-size="15" fill="#276650">相対運動 −w</text><text x="144" y="121" font-size="15" fill="#955d2f">δ* = 最近接距離</text>
+          <text x="120" y="35" font-size="15" fill="#223630">q − wt*</text><text x="355" y="174" font-size="13" fill="#5b6963">近傍の直線運動を仮定した模式図</text>
+        </svg>
+        </div>
+        <figcaption>この予測は自分の「希望速度」と相手の「現在速度」の組です。両者が直後に回避することまで同時に最適化していません。図の円は判定距離の概念を示すもので、実寸ではありません。狭い画面では図を左右にスクロールできます。</figcaption>
+      </figure>
+      <p>FioriniとShiller（1998）のVelocity Obstaclesは、相対運動から衝突を起こす速度の集合を扱う原典です。Fluxityは最近接の一点を評価して右寄せするだけで、その速度集合を構築・探索しません。ORCAのように双方の回避負担を半分ずつ割り当て、半平面制約から安全な速度を解く方式でもありません。<a class="cite" href="#ref-5">[5]</a> <a class="cite" href="#ref-6">[6]</a></p>
+      <h3>5.4 合成・滞留脱出・壁回避</h3>
+      <pre><code>v_desired = sᵢdᵢ × (1 − brake × min(1,k))
+          + k × (Sᵢ + lateral × right(dᵢ))
+          + 滞留時の右寄せ + 壁・外周からの反発
+最後に |v_desired| を 1.12sᵢ 以下へ制限</code></pre>
+      <p>速度が希望速度の20%未満の状態が2秒を超えて続くと、希望速度が正の場合に <code>0.3 × right(dᵢ)</code> を追加します。対称な対向流の膠着を緩めるためのルールですが、必ず脱出できる保証はありません。</p>
+      <p>建物の最近点からの距離が <code>rᵢ + 0.75m</code> 未満なら、その点から遠ざかる成分を加えます。シーン外周にも同様の反発があります。これらと滞留脱出はkの乗算の外にあるため、<strong>Avoidanceを0にしても壁・信号・滞留脱出の処理は残ります。</strong></p>
+      <p class="source">実装：<a href="#src-steering">Steering.compute</a>。<code>LocalAvoidance</code>を置き換えれば、経路探索やWorker通信を維持したまま別の回避法を導入できます。</p>
+    </section>
+
+    <section id="integration">
+      <h2><span class="num">06 / MOTION</span>速度を更新してから位置を進める</h2>
+      <p>希望速度へ即座に切り替えず、0.3秒の応答時間を使って加速度を求め、通常の加速・減速を滑らかにします。</p>
+      <pre><code>a = (v_desired − v) / 0.3
+a ← 長さを最大 3.8 m/s² に制限
+v′ = v + aΔt
+p′ = p + v′Δt
+Δt = 1/30 s（通常のWorker実行）</code></pre>
+      <p>速度を先に更新するので、運動更新は<strong>semi-implicit Euler型</strong>です。ここでの加速度は運動制御の補正値で、質量・接触力・摩擦を解く剛体力学モデルではありません。速度設定を下げた場合には、現在速度から3.8m/s²で減速できる値も上限計算に含め、一瞬で速度を切り落とさないようにします。</p>
+      <h3>壁との接触は位置を補正する</h3>
+      <p>位置更新後、外周へクランプし、建物の拡張AABB内に入っていれば最も近い辺の外へ押し戻します。渋谷ではさらに歩行可能領域へ投影します。最後に <code>v = (補正後位置 − 旧位置) / Δt</code> として実際の移動速度を再計算します。</p>
+      <p>そのため、3.8m/s²という上限は<strong>位置補正を含めた全変化を保証する上限ではありません</strong>。また、AABBの拡張は角まで含めて保守的に空間を除外する近似です。一般的な形状の厳密な連続衝突判定（CCD）や人物同士の接触解法は実装していません。</p>
+      <h3>身体の向きと歩行アニメーション</h3>
+      <p>速度が0.045m/sを超えると、移動方向 <code>atan2(vx, vz)</code> へ、最短の角度差を使って最大<strong>3.5rad/s</strong>で身体の向きを近づけます。これは見た目の向きの制限で、速度ベクトル自体の旋回速度を制限する処理ではありません。</p>
+      <p>歩行位相は <code>phase += speed × Δt × 4.5</code> とし、移動距離に連動させます。位相を毎回2πへ折り返さないことで補間の継ぎ目を避けます。速度0.06m/s未満はIdle、2.2m/s超はRun、それ以外はWalkとして描画へ渡します。</p>
+      <p class="source">実装：<a href="#src-simulation">Simulation.step / writeSnapshot</a>。</p>
+    </section>
+
+    <section id="signals">
+      <h2><span class="num">07 / SHIBUYA SCRAMBLE</span>信号で「横断を始める人」を制御する</h2>
+      <p>渋谷ステージは、道路半幅18m、四隅の歩道、幅10mの横断歩道5本からなる模擬空間です。横断歩道は外周4本と<strong>斜め1本</strong>の向き付き長方形で、対角線が2本ある配置ではありません。CPUの経路探索と描画が同じ配置データを使用します。</p>
+      <div class="states">
+        <div class="state"><h3><span class="lamp" aria-hidden="true"></span>赤：新しい横断を抑止</h3><p>現在歩道上にいる人は、車道へ向かう希望方向の成分を弱め、最終位置も歩道側に制限します。</p><p>横断中の人は渡り続けます。待機者も横方向や外側へ動いて道を譲れます。</p></div>
+        <div class="state"><h3><span class="lamp green" aria-hidden="true"></span>青：横断を開始</h3><p>信号による歩道限定の制約を外し、歩道と横断歩道の和集合を移動可能にします。</p><p>歩行者同士の回避と、横断歩道の外へ出ない制約は継続します。</p></div>
+      </div>
+      <h3>停止線への接近と、位置制約の二段階</h3>
+      <p>赤で歩道にいる人について、進行方向の停止線までの距離が3m未満なら、道路へ向かうx/z成分を距離に応じて弱めます。減速幅は2.2m、停止位置には半径に加えて0.08mの余裕を設けます。減速を<strong>局所回避より前</strong>に適用するので、赤でも周囲を避ける余地が残ります。</p>
+      <p>局所回避の押し出しで車道へ入らないよう、最後に位置を制約します。赤で歩道から動き始める場合は元の歩道側へ成分ごとにクランプし、縁に沿う移動を残します。すでに道路上にいるかどうかは各ステップの位置から判定し、独立した「横断中」フラグを永続保持する方式ではありません。</p>
+      <h3>歩行領域の和集合と、端に沿う移動</h3>
+      <p>見通し判定では、線分 <code>p(t)=p₀+t(p₁−p₀)</code> が各歩道・横断歩道の内側にあるtの区間を求め、区間の和集合が[0,1]全体を覆うかを調べます。等間隔に点をサンプリングする判定ではありません。人物半径の余裕は各領域を縮めることで表現します。</p>
+      <p>移動後の点が領域外なら、開始点を含む凸領域へ投影し、移動予定点に最も近い候補を選びます。これにより横断歩道の端に押し付けられても、端に沿った成分を保ちます。丸め誤差などの回復処理には追加の区間判定と最大10回の二分探索を使います。通常経路では終点が有効なら即座に採用するので、任意の巨大なステップに対する連続通行保証ではありません。</p>
+      <h3>自動周期はシミュレーション時計で進む</h3>
+      <pre><code>τ = simulationTime mod 47
+0 ≤ τ &lt; 12  → 赤
+12 ≤ τ &lt; 47 → 青
+手動Red / Green → 指定した色に固定、残り時間はなし</code></pre>
+      <p>周期は<strong>赤12秒＋青35秒</strong>です。実装では境界の丸め誤差を抑えるため時刻に10⁻⁹秒を加えて剰余を取ります。Pause中は時計が進まず、速度倍率はこの時計の進み方にも作用します。Autoへ戻すと現在時刻の位相に復帰し、赤から周期をやり直すわけではありません。</p>
+      <p>これは本実装のデモ用ルールです。車両との協調、青の点滅、横断完了に応じた延長、実際の渋谷の信号周期はモデル化していません。</p>
+      <p class="source">実装：<a href="#src-signal">TrafficSignal</a>、<a href="#src-scramble">ScrambleGeometry</a>、<a href="#src-shibuya">shibuyaシナリオ</a>、<a href="#src-simulation">Simulation.step</a>。</p>
+    </section>
+
+    <section id="time">
+      <h2><span class="num">08 / TIME &amp; DATA</span>計算の時計と、画面の時計を分ける</h2>
+      <h3>固定刻みと、追いつき処理の上限</h3>
+      <p>固定時間刻み・accumulator・描画補間の実用的な参考はFiedler（2004）です。時間刻みを一定にすることで、描画フレームレートの変化を運動計算へ直接持ち込まずに済みます。この文献を固定刻み数値積分そのものの発明の原典とは位置づけません。<a class="cite" href="#ref-10">[10]</a></p>
+      <p>Workerは8ms間隔のタイマーで起動しますが、タイマーは正確な周期を保証しません。実時間差を最大0.1秒に制限し、速度倍率を掛けてaccumulatorへ足します。蓄積は最大3Δt、一度に実行するのは最大3ステップです。遅れが大きいときは余剰時間を捨てるため、負荷が高い場合のシミュレーション時刻は実時間より遅くなります。</p>
+      <h3>SoAと二重状態</h3>
+      <p>人物ごとのオブジェクトではなく、<code>x[]</code>、<code>z[]</code>、<code>vx[]</code>などのTypedArrayを並べるStructure of Arrays（SoA）形式です。運動状態をcurrent/nextの2組で保持し、全員の計算が終わってから交換します。これにより、同じステップ内で先に計算した人の新しい位置を、後の人が読んでしまう非対称性を避けます。ただしIDや候補順序への依存まで消えるわけではありません。</p>
+      <h3>Snapshot転送と表示補間</h3>
+      <p>Snapshotは1人12個のFloat32、<strong>48bytes</strong>です。Workerが用意した4個のArrayBufferをTransferableとして受け渡しし、メインスレッドは直前と現在の2状態を保持します。空きバッファがなければ中間Snapshotの送信を省略し、返却時に最新状態を送ります。世代番号でリセット前のデータを除外します。</p>
+      <pre><code>p_render = (1 − α) p_previous + α p_current
+α = clamp((受信後の実時間 × 速度倍率) / Snapshot間のシミュレーション時刻差, 0, 1)</code></pre>
+      <p>Snapshot間のシミュレーション時刻差が0の場合はΔtを代用します。これはCPUの処理時間ではありません。向きは最短の角度差、歩行位相は連続値で補間します。受信時刻を基準にするため、Fiedlerの記事のaccumulator比率をそのまま使う実装ではありません。αは1で止まり、未来位置への外挿は行いません。通常は約1ステップ分遅れた状態を滑らかに見せ、転送が間引かれた場合はより広い状態間を補間します。</p>
+      <p>Workerは1本です。描画スレッドと計算スレッドは並行しますが、人物の更新を複数のCPU Workerへ分割する方式ではありません。</p>
+      <p class="source">実装：<a href="#src-worker">SimulationWorker</a>、<a href="#src-agents">AgentData</a>、<a href="#src-timeline">SnapshotTimeline</a>、<a href="#src-instances">InstanceBuffer.update</a>。</p>
+    </section>
+
+    <section id="random">
+      <h2><span class="num">09 / REPRODUCIBILITY</span>初期化・目的地更新・再現性</h2>
+      <p>乱数はseedから生成し、体格・速度差・外観・初期配置・目的地の分散に使用します。<code>Random.next</code>の定数 <code>0x6d2b79f5</code> と乗算・XORの構成は、Ettinger（2017）の<strong>Mulberry32</strong>に対応するものです。<a class="cite" href="#ref-11">[11]</a></p>
+      <p>ただし本実装の状態変数はJavaScriptのNumberで、加算のたびに32bitへ折り返す処理はありません。原典の32bit整数状態と完全に同じ長周期特性を保証するとは記述しません。通常の再現性は同じコード・seed・設定・ステップ列・設定変更のタイミングを前提とし、ブラウザ間の全演算のbit単位一致まで検証していません。</p>
+      <h3>初期配置は試行回数を制限した拒否サンプリング</h3>
+      <p>スポーン領域から候補点を取り、通行可能性と既配置人物との距離を調べます。最大100回まで試し、密集時には間隔条件を緩めます。最後の候補が通行不可なら、歩ける格子セルへ回復します。渋谷では初期位置を歩道に限定します。これは厳密なPoisson Disk Samplingや、全員の非重複を保証する配置法ではありません。</p>
+      <h3>目的地へ着いたら次を選ぶ</h3>
+      <p>目標までの距離の二乗が10未満（約3.16m以内）になると、人物を消したり再生成したりせず、次の目的地を割り当てます。渋谷は <code>targetId XOR 3</code> で対角側へ、往復型のシーンは <code>XOR 1</code> で反対側へ切り替えます。広場では現在と異なる目的地を乱数で選びます。</p>
+      <p>個別目標は最大8回の試行で基準目標の周囲へ分散させ、到着者が一点に集中するのを抑えます。経路場そのものは基準目標ごとに共有したままです。</p>
+      <p class="source">実装：<a href="#src-random">Random</a>、<a href="#src-simulation">Simulation.initialize / assignTarget / nextTarget</a>。</p>
+    </section>
+
+    <section id="parameters">
+      <h2><span class="num">10 / PARAMETERS</span>主要パラメータと、その意味</h2>
+      <p>以下は対象コミットでの実装値です。論文から転記した普遍定数や、実測データに適合させた係数ではありません。</p>
+      <div class="table-wrap"><table class="wide"><thead><tr><th scope="col">パラメータ</th><th scope="col">値</th><th scope="col">用途・実装</th></tr></thead><tbody>
+        <tr><td>固定刻み</td><td>1/30秒</td><td><a href="#src-types">FIXED_DT</a>。速度倍率は刻み幅を変えない。倍率のCore許容範囲は0.1〜4、UIは0.25〜2。</td></tr>
+        <tr><td>追いつき処理</td><td>最大3ステップ</td><td><a href="#src-worker">Worker</a>。過剰な蓄積時間は破棄。</td></tr>
+        <tr><td>初期人数 / 上限</td><td>5,000 / 20,000人</td><td><a href="#src-types">DEFAULT_CONFIG / MAX_AGENTS</a>。</td></tr>
+        <tr><td>経路格子 / 余裕</td><td>1.5m / 0.58m</td><td><a href="#src-navigation">Navigation</a>。近傍探索用格子とは別。</td></tr>
+        <tr><td>近傍セル幅・半径</td><td>2.4m</td><td><a href="#src-grid">SpatialGrid</a>と<a href="#src-steering">Steering</a>。</td></tr>
+        <tr><td>候補上限</td><td>96人</td><td>距離フィルタ前に数える。最近傍順ではない。</td></tr>
+        <tr><td>基準歩行速度</td><td>1.35m/s</td><td>個人ごとに0.8〜1.2倍。Core許容範囲は0〜4m/s、UIは0.3〜3m/s。</td></tr>
+        <tr><td>人物半径</td><td>0.25 × scale m</td><td>scaleは0.89〜1.13。半径は約0.223〜0.283m。</td></tr>
+        <tr><td>近距離反発の余裕</td><td>半径の和 + 0.34m</td><td>係数3.6、1組からの補正量上限2.4。</td></tr>
+        <tr><td>前方追従</td><td>1.8m以内</td><td>横方向は半径の和 + 0.2m以内。</td></tr>
+        <tr><td>予測時間 / 余裕</td><td>1.6秒 / +0.35m</td><td>候補の現在位置は2.4m以内に限定。</td></tr>
+        <tr><td>速度応答 / 加速度</td><td>0.3秒 / 3.8m/s²</td><td>境界による位置補正は別処理。</td></tr>
+        <tr><td>速度上限係数</td><td>希望速度 × 1.12</td><td>設定を下げた直後は滑らかな減速を優先。</td></tr>
+        <tr><td>身体の旋回</td><td>最大3.5rad/s</td><td>移動方向への見た目の追従。</td></tr>
+        <tr><td>赤 / 青</td><td>12秒 / 35秒</td><td><a href="#src-signal">TrafficSignal</a>。実時間ではなく計算時間。</td></tr>
+        <tr><td>停止線の接近判定</td><td>3m未満</td><td>赤の待機人数もこの判定で数える。</td></tr>
+      </tbody></table></div>
+      <h3>表示される統計の定義</h3>
+      <ul>
+        <li><strong>Mean speed：</strong>境界補正後の移動速度の全員平均。</li>
+        <li><strong>Congestion：</strong>速度が各人の希望速度の45%未満である人の割合。面積当たり人数の「密度」ではありません。希望速度0の人は <code>speed &lt; 0</code> を満たさないため、この指標では停止扱いになりません。</li>
+        <li><strong>Waiting：</strong>赤で歩道におり、進行方向の停止線まで3m未満の人。完全に静止している人数とは限りません。</li>
+        <li><strong>Crossing：</strong>現在歩道の外にいる人の人数。累積の横断完了人数ではありません。</li>
+      </ul>
+      <p class="small">Waiting/Crossingは通常ステップで集計します。停止中の手動切り替えでは信号色は即時更新されますが、人数の再集計は次のステップまで行いません（Greenへの変更ではWaitingを0にします）。</p>
+    </section>
+
+    <section id="limits">
+      <h2><span class="num">11 / VALIDATION &amp; LIMITS</span>何を検証し、何を保証しないか</h2>
+      <p>対象コードには、seedによる再現性、障害物を迂回する到達、グリッドの索引、対向2人のすれ違い、加減速と向き、赤信号での進入抑止、横断中の継続、端に沿う移動、20,000人での領域制約、Snapshotの所有権などの自動テストがあります。</p>
+      <p>参照：<a href="#src-tests">simulation.test.ts / signal.test.ts / timeline.test.ts</a>。テストが扱う条件で性質を確認しているのであり、任意の密度・配置・速度・実行時間で成立する数学的証明ではありません。</p>
+      <div class="table-wrap"><table class="wide"><thead><tr><th scope="col">境界</th><th scope="col">実装上の意味</th></tr></thead><tbody>
+        <tr><td>人物同士の重なり</td><td>速度補正のみで、接触拘束を解かない。過密時や候補の見落としで重なり得る。</td></tr>
+        <tr><td>渋滞・デッドロック</td><td>右側通行と滞留脱出で軽減するが、出口の混雑や対向流の膠着を必ず解消する保証はない。</td></tr>
+        <tr><td>最短経路・動的混雑</td><td>静的な共有場。混雑で大域経路を再最適化せず、個別軌跡の最短性も保証しない。</td></tr>
+        <tr><td>境界と大きな刻み</td><td>短い固定刻みを前提とした補正。任意形状・任意速度へのCCDではない。coreのstepは0超〜0.1秒を許すが、通常のWorkerは1/30秒固定。</td></tr>
+        <tr><td>実測との対応</td><td>歩行速度差・空間係数・右寄せ・信号周期はデモ設定。実在の渋谷の流量・避難時間・安全性の予測用に校正していない。</td></tr>
+        <tr><td>計算量と性能</td><td>近傍探索には上限があるが、描画・障害物数・領域判定なども時間を使う。全端末・全人数で30Hzや60FPSを保証しない。</td></tr>
+      </tbody></table></div>
+      <p>固定シーンで、人数N、近傍セル数C、障害物数Bとすると、通常ステップの主なCPU処理は概ね <code>O(N + C + 96N + NB)</code> です。横断歩道の領域数を固定として扱った目安であり、初期化・Dijkstra場の構築・GPU描画は含みません。</p>
+      <p>より厳密な回避が必要なら<code>LocalAvoidance</code>をORCAなどへ置き換え、動的な混雑を考慮するなら誘導場の更新方式を変更できます。その場合も、各方式の仮定と高密度条件での限界を改めて検証する必要があります。</p>
+    </section>
+
+    <section id="references">
+      <h2><span class="num">12 / REFERENCES</span>参考文献・原典</h2>
+      <p>著者本人・出版社・公式の公開資料を優先しました。本文の説明は実装の分析と文献の要約であり、論文本文・図の転載は行っていません。DOI先が購読制の場合は、併記した著者公開版を参照してください。</p>
+      <ol class="refs">
+        <li id="ref-1"><span class="ref-id">[1]</span>Edsger W. Dijkstra (1959). <cite>A note on two problems in connexion with graphs.</cite> <em>Numerische Mathematik</em>, 1, 269–271.<p><a href="https://doi.org/10.1007/BF01386390">DOI: 10.1007/BF01386390</a></p><p class="use">位置づけ：採用アルゴリズムの原典。非負重みの最短路。Fluxityのヒープ構造・格子解像度・方向抽出は実装側の選択。</p></li>
+        <li id="ref-2"><span class="ref-id">[2]</span>Elijah Emerson (2013). <cite>Crowd Pathfinding and Steering Using Flow Field Tiles.</cite> In Steve Rabin (ed.), <em>Game AI Pro: Collected Wisdom of Game AI Professionals</em>, Chapter 23, pp. 307–316. CRC Press.<p><a href="https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter23_Crowd_Pathfinding_and_Steering_Using_Flow_Field_Tiles.pdf">公式公開PDF</a> · <a href="https://www.gameaipro.com/">書籍公式サイト</a></p><p class="use">位置づけ：共有フローフィールドのゲーム実装に関する代表的技術資料。Flow Field一般の最初の発明と断定するものではなく、タイル階層も本実装にはない。</p></li>
+        <li id="ref-3"><span class="ref-id">[3]</span>Craig W. Reynolds (1987). <cite>Flocks, Herds, and Schools: A Distributed Behavioral Model.</cite> <em>Computer Graphics</em>, 21(4), 25–34 (SIGGRAPH ’87).<p><a href="https://doi.org/10.1145/37401.37406">DOI: 10.1145/37401.37406</a> · <a href="https://www.red3d.com/cwr/papers/1987/boids.html">著者の論文ページ</a></p><p class="use">位置づけ：局所行動から群れを形成するBoidsの原典。Fluxityでは整列・結合を含むBoids全体を再現していない。</p></li>
+        <li id="ref-4"><span class="ref-id">[4]</span>Craig W. Reynolds (1999). <cite>Steering Behaviors for Autonomous Characters.</cite> <em>Proceedings of the Game Developers Conference 1999</em>, pp. 763–782. Miller Freeman.<p><a href="https://www.red3d.com/cwr/steer/gdc99/">著者公開版</a></p><p class="use">位置づけ：目標追従・分離・回避などのSteering行動の系譜。本実装の右寄せ・減速係数の出典ではない。</p></li>
+        <li id="ref-5"><span class="ref-id">[5]</span>Paolo Fiorini and Zvi Shiller (1998). <cite>Motion Planning in Dynamic Environments Using Velocity Obstacles.</cite> <em>The International Journal of Robotics Research</em>, 17(7), 760–772.<p><a href="https://doi.org/10.1177/027836499801700706">DOI: 10.1177/027836499801700706</a></p><p class="use">位置づけ：相対速度による衝突予測を理解するための原典・比較対象。FluxityはVelocity Obstacle集合を計算しない。</p></li>
+        <li id="ref-6"><span class="ref-id">[6]</span>Jur van den Berg, Stephen J. Guy, Ming Lin, and Dinesh Manocha (2011). <cite>Reciprocal n-Body Collision Avoidance.</cite> In <em>Robotics Research</em>, Springer Tracts in Advanced Robotics, 70, 3–19.<p><a href="https://doi.org/10.1007/978-3-642-19457-3_1">DOI: 10.1007/978-3-642-19457-3_1</a> · <a href="https://gamma-web.iacs.umd.edu/ORCA/">ORCA研究プロジェクト</a></p><p class="use">位置づけ：未実装方式との比較。ORCAの相互回避制約・線形計画法は本実装に含まれない。</p></li>
+        <li id="ref-7"><span class="ref-id">[7]</span>Dirk Helbing and Péter Molnár (1995). <cite>Social force model for pedestrian dynamics.</cite> <em>Physical Review E</em>, 51(5), 4282–4286.<p><a href="https://doi.org/10.1103/PhysRevE.51.4282">DOI: 10.1103/PhysRevE.51.4282</a> · <a href="https://arxiv.org/abs/cond-mat/9805244">著者公開版（arXiv掲載は1998年）</a></p><p class="use">位置づけ：歩行者モデルの比較対象。希望速度への緩和や反発という類似点はあるが、Fluxityをこの論文のSocial Force Modelとは呼ばない。</p></li>
+        <li id="ref-8"><span class="ref-id">[8]</span>Adrien Treuille, Seth Cooper, and Zoran Popović (2006). <cite>Continuum Crowds.</cite> <em>ACM Transactions on Graphics</em>, 25(3), 1160–1168.<p><a href="https://doi.org/10.1145/1141911.1142008">DOI: 10.1145/1141911.1142008</a> · <a href="https://grail.cs.washington.edu/projects/crowd-flows/">著者の研究ページ</a></p><p class="use">位置づけ：連続体・動的ポテンシャル場を使う群集研究との比較。静的な離散Dijkstra場を使う本実装とは異なる。</p></li>
+        <li id="ref-9"><span class="ref-id">[9]</span>Scott Le Grand (2007). <cite>Broad-Phase Collision Detection with CUDA.</cite> In Hubert Nguyen (ed.), <em>GPU Gems 3</em>, Chapter 32. Addison-Wesley.<p><a href="https://developer.nvidia.com/gpugems/gpugems3/part-v-physics-simulation/chapter-32-broad-phase-collision-detection-cuda">NVIDIA公式公開版</a></p><p class="use">位置づけ：Uniform Gridによる空間分割の技術的参考。Fluxityの近傍グリッドはCPU上のCounting Sort型であり、このCUDA実装の移植ではない。</p></li>
+        <li id="ref-10"><span class="ref-id">[10]</span>Glenn Fiedler (2004-06-10). <cite>Fix Your Timestep!</cite> <em>Gaffer On Games</em>.<p><a href="https://gafferongames.com/post/fix_your_timestep/">著者の記事</a></p><p class="use">位置づけ：固定刻み・accumulator・描画補間の実用的な説明。Worker間転送、3ステップ上限、受信時刻による補間係数はFluxity固有。</p></li>
+        <li id="ref-11"><span class="ref-id">[11]</span>Tommy Ettinger (2017). <cite>Mulberry32 PRNG</cite> (<code>mulberry32.c</code>). GitHub Gist.<p><a href="https://gist.github.com/tommyettinger/46a874533244883189143505d203312c">作者の原実装</a></p><p class="use">位置づけ：擬似乱数の演算構成に対応する原実装。2017年はソース冒頭の記載による。JavaScript版の状態保持と原典の32bit整数状態には違いがある。</p></li>
+        <li id="ref-12"><span class="ref-id">[12]</span>Matt Pharr, Wenzel Jakob, and Greg Humphreys (2023). <cite>Physically Based Rendering: From Theory to Implementation</cite>, 4th ed., §6.1.2 “Ray–Bounds Intersections.” MIT Press.<p><a href="https://pbr-book.org/4ed/Shapes/Basic_Shape_Interface#RayndashBoundsIntersections">著者の公式オンライン版</a></p><p class="use">位置づけ：スラブ法による区間交差の実装説明。手法の最初の提案者であるという意味ではない。</p></li>
+      </ol>
+    </section>
+
+    <section id="sources">
+      <h2><span class="num">SOURCE MAP</span>実装ファイル一覧</h2>
+      <p>以下のリンクは、この文書で確認したコミットへ固定しています。コード変更後に読む場合は、現在の実装との差分を確認してください。</p>
+      <ul class="sources">
+        <li id="src-simulation"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/Simulation.ts"><code>src/simulation/Simulation.ts</code></a> — 初期化、目的地更新、信号による減速、運動積分、統計。</li>
+        <li id="src-navigation"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/Navigation.ts"><code>src/simulation/Navigation.ts</code></a> — MinHeap、Dijkstra距離場、方向場、見通し判定。</li>
+        <li id="src-grid"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/SpatialGrid.ts"><code>src/simulation/SpatialGrid.ts</code></a> — セルの集計、累積和、人物索引。</li>
+        <li id="src-steering"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/Steering.ts"><code>src/simulation/Steering.ts</code></a> — 局所回避、前方減速、最近接予測、壁反発。</li>
+        <li id="src-scramble"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/ScrambleGeometry.ts"><code>src/simulation/ScrambleGeometry.ts</code></a> — 歩道・横断歩道、区間の和集合、境界投影。</li>
+        <li id="src-signal"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/TrafficSignal.ts"><code>src/simulation/TrafficSignal.ts</code></a> — 自動周期と手動信号。</li>
+        <li id="src-shibuya"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/scenarios/shibuya.ts"><code>src/scenarios/shibuya.ts</code></a> — 渋谷風ステージの形状と目標。</li>
+        <li id="src-agents"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/AgentData.ts"><code>src/simulation/AgentData.ts</code></a> — SoAと二重の運動状態。</li>
+        <li id="src-worker"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/simulation/SimulationWorker.ts"><code>src/simulation/SimulationWorker.ts</code></a> — 固定刻み、追いつき処理、Snapshot転送。</li>
+        <li id="src-timeline"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/app/SnapshotTimeline.ts"><code>src/app/SnapshotTimeline.ts</code></a> — 2状態の保持と補間係数。</li>
+        <li id="src-instances"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/renderer/InstanceBuffer.ts"><code>src/renderer/InstanceBuffer.ts</code></a> — 位置・角度・位相の補間と描画用データ。</li>
+        <li id="src-random"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/math/random.ts"><code>src/math/random.ts</code></a> — seed付き擬似乱数。</li>
+        <li id="src-types"><a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/types.ts"><code>src/types.ts</code></a> — 初期設定、刻み幅、Snapshot形式。</li>
+        <li id="src-tests">テスト：<a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/tests/simulation.test.ts"><code>simulation.test.ts</code></a>、<a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/tests/signal.test.ts"><code>signal.test.ts</code></a>、<a href="https://github.com/shuichi/fluxity/blob/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3/src/tests/timeline.test.ts"><code>timeline.test.ts</code></a>。</li>
+      </ul>
+    </section>
+  </main>
+</div>
+<footer><span>Fluxity · Algorithms &amp; implementation notes · 2026-11-17</span><a href="#">ページ先頭へ ↑</a></footer>
+</body>
+</html>
