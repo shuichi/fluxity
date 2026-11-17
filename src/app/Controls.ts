@@ -5,6 +5,7 @@ export interface ControlCallbacks {
   onPause: () => void;
   onReset: () => void;
   onQuality: (quality: Quality) => void;
+  onAppearance: (photographic: boolean) => void;
   onDebug: (enabled: boolean) => void;
   onCamera: (view: CameraView | 'reset') => void;
   onBenchmark: () => void;
@@ -78,6 +79,7 @@ export class Controls {
             <div class="select-wrap"><select id="scenario" class="simulation-control"><option value="shibuya">Shibuya Scramble</option><option value="plaza">City Plaza</option><option value="corridor">Bidirectional Corridor</option><option value="bottleneck">Bottleneck</option><option value="crossing">Crossing Flow</option></select></div>
             <p class="field-hint" id="scenario-note">PLATEAU 2025 · LOD2 buildings · Flat-ground study</p>
             <div class="map-credit" id="map-credit"><a href="https://www.geospatial.jp/ckan/dataset/plateau-13113-shibuya-ku-2025" target="_blank" rel="noopener noreferrer" title="3D都市モデル（Project PLATEAU）渋谷区（2025年度）を加工して作成">PLATEAU · Shibuya 2025 · adapted</a><span> / </span><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a><span class="map-reference"> · Crossings calibrated with <a href="https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto" target="_blank" rel="noopener noreferrer">GSI imagery</a></span></div>
+            <div class="field-row appearance-row" id="appearance-controls"><label for="building-appearance">Building appearance</label><div class="select-wrap compact-select"><select id="building-appearance" class="simulation-control"><option value="photo" selected>Photo</option><option value="solid">Solid</option></select></div></div>
           </section>
           <details class="control-section signal-section" id="signal-controls" open hidden>
             <summary><span class="field-label">Pedestrian signal</span><span class="signal-control-phase" id="signal-control-phase">Syncing</span></summary>
@@ -171,6 +173,7 @@ export class Controls {
     bindRange('walking-speed', 'walkingSpeed');
     bindRange('avoidance', 'avoidanceStrength');
     on(this.get('quality'), 'change', () => callbacks.onQuality(this.get<HTMLSelectElement>('quality').value as Quality));
+    on(this.get('building-appearance'), 'change', () => callbacks.onAppearance(this.get<HTMLSelectElement>('building-appearance').value === 'photo'));
     on(this.get('debug'), 'change', () => {
       const enabled = this.get<HTMLInputElement>('debug').checked;
       this.root.classList.toggle('lod-debug', enabled);
@@ -255,6 +258,7 @@ export class Controls {
     this.get('scene-description').textContent = details.description;
     this.get('scenario-note').textContent = details.note;
     this.get('map-credit').hidden = config.scenario !== 'shibuya';
+    this.get('appearance-controls').hidden = config.scenario !== 'shibuya';
     this.get('signal-controls').hidden = config.scenario !== 'shibuya';
     this.root.classList.toggle('signal-scene', config.scenario === 'shibuya');
     this.root.querySelectorAll<HTMLButtonElement>('[data-signal-mode]').forEach(button => {

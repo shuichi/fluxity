@@ -8,13 +8,19 @@ import { createHumanMesh, HUMAN_VERTEX_STRIDE } from './HumanMesh';
 import { createEnvironment, ENVIRONMENT_VERTEX_STRIDE } from './Environment';
 import { InstanceBuffer, INSTANCE_STRIDE } from './InstanceBuffer';
 import { LIGHTING } from './Lighting';
-import { UrbanMeshLoader, mergeEnvironmentMeshes } from './UrbanMesh';
+import { UrbanMeshLoader, mergeEnvironmentMeshes, untexturedCoordinates } from './UrbanMesh';
 import type { EnvironmentMeshData } from './UrbanMesh';
+import { createUrbanAppearance } from './UrbanAppearance';
 
 interface Mesh {
   vertex: GPUBuffer;
   index: GPUBuffer;
   indexCount: number;
+}
+interface EnvironmentMesh extends Mesh {
+  coordinates: GPUBuffer;
+  texture: GPUTexture;
+  appearanceGroup: GPUBindGroup;
 }
 
 export class WebGPURenderer {
@@ -27,7 +33,7 @@ export class WebGPURenderer {
   private readonly instances: InstanceBuffer;
   private readonly uniforms = new Float32Array(32);
   private readonly humans: Mesh[] = [];
-  private environment: Mesh | null = null;
+  private environment: EnvironmentMesh | null = null;
   private depth: GPUTexture | null = null;
   private depthView: GPUTextureView | null = null;
   private humanPipeline!: GPURenderPipeline;
@@ -35,6 +41,8 @@ export class WebGPURenderer {
   private shadowPipeline!: GPURenderPipeline;
   private readonly sceneLayout: GPUBindGroupLayout;
   private readonly instanceLayout: GPUBindGroupLayout;
+  private readonly appearanceLayout: GPUBindGroupLayout;
+  private readonly appearanceSampler: GPUSampler;
   private width = 0;
   private height = 0;
   private dead = false;
@@ -42,6 +50,7 @@ export class WebGPURenderer {
   private scenarioRequest = 0;
   private readonly urbanMeshes = new UrbanMeshLoader();
   private roadHalfWidth = 0;
+  private photographicAppearance = true;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -72,6 +81,14 @@ export class WebGPURenderer {
     this.instanceLayout = device.createBindGroupLayout({ label: 'Instance storage layout · 64 bytes per agent', entries: [
       { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage', minBindingSize: INSTANCE_STRIDE } },
     ] });
+    this.appearanceLayout = device.createBindGroupLayout({ label: 'Photographic environment appearance', entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension: '2d-array' } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+    ] });
+    this.appearanceSampler = device.createSampler({
+      minFilter: 'linear', magFilter: 'linear', mipmapFilter: 'linear',
+      addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge', maxAnisotropy: 4,
+    });
     this.sceneBuffer = device.createBuffer({ label: 'Scene uniforms', size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.sceneGroup = device.createBindGroup({ layout: this.sceneLayout, entries: [{ binding: 0, resource: { buffer: this.sceneBuffer } }] });
     this.instances = new InstanceBuffer(device);
@@ -134,10 +151,10 @@ export class WebGPURenderer {
         primitive: { topology: 'triangle-list', cullMode: 'back' }, depthStencil,
       }),
       this.device.createRenderPipelineAsync({
-        label: 'Urban environment', layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.sceneLayout] }),
+        label: 'Urban environment', layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.sceneLayout, this.appearanceLayout] }),
         vertex: { module: environment, entryPoint: 'vertexMain', buffers: [{ arrayStride: ENVIRONMENT_VERTEX_STRIDE, attributes: [
           { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x4' },
-        ] }] },
+        ] }, { arrayStride: 12, attributes: [{ shaderLocation: 3, offset: 0, format: 'float32x3' }] }] },
         fragment: { module: environment, entryPoint: 'fragmentMain', targets: [{ format: this.format }] },
         primitive: { topology: 'triangle-list', cullMode: 'back' }, depthStencil,
       }),
@@ -171,22 +188,61 @@ export class WebGPURenderer {
     } catch (error) { vertex.destroy(); index?.destroy(); throw error; }
   }
 
+  private uploadEnvironment(data: EnvironmentMeshData, images: readonly ImageBitmap[], label: string): EnvironmentMesh {
+    const mesh = this.uploadMesh(data, label);
+    let coordinates: GPUBuffer | undefined, texture: GPUTexture | undefined;
+    try {
+      const values = data.appearance?.coordinates ?? untexturedCoordinates(data.vertices.length / 10);
+      if (values.byteLength > this.device.limits.maxBufferSize) throw new Error('This GPU cannot allocate photographic coordinates.');
+      coordinates = this.device.createBuffer({ label: `${label} photographic coordinates`, size: values.byteLength, usage: GPUBufferUsage.VERTEX, mappedAtCreation: true });
+      new Float32Array(coordinates.getMappedRange()).set(values); coordinates.unmap();
+      texture = createUrbanAppearance(this.device, images, data.appearance?.width ?? 1, data.appearance?.height ?? 1);
+      const appearanceGroup = this.device.createBindGroup({ layout: this.appearanceLayout, entries: [
+        { binding: 0, resource: texture.createView({ dimension: '2d-array' }) },
+        { binding: 1, resource: this.appearanceSampler },
+      ] });
+      return { ...mesh, coordinates, texture, appearanceGroup };
+    } catch (error) {
+      mesh.vertex.destroy(); mesh.index.destroy(); coordinates?.destroy(); texture?.destroy();
+      throw error;
+    }
+  }
+
+  private releaseEnvironment(): void {
+    this.environment?.vertex.destroy(); this.environment?.index.destroy();
+    this.environment?.coordinates.destroy(); this.environment?.texture.destroy();
+    this.environment = null;
+  }
+
+  setPhotographicAppearance(enabled: boolean): void { this.photographicAppearance = enabled; }
+
   setScenario(scenario: Scenario): void | Promise<void> {
     if (this.dead) return;
     const request = ++this.scenarioRequest;
-    const install = (data: EnvironmentMeshData): void => {
+    const install = (data: EnvironmentMeshData, images: readonly ImageBitmap[] = []): void => {
       if (this.dead || request !== this.scenarioRequest) return;
-      const next = this.uploadMesh(data, scenario.name);
-      this.environment?.vertex.destroy(); this.environment?.index.destroy();
+      const next = this.uploadEnvironment(data, images, scenario.name);
+      this.releaseEnvironment();
       this.environment = next;
       this.roadHalfWidth = scenario.urbanMap ? 0 : scenario.scramble?.roadHalfWidth ?? 0;
       this.camera.setBounds(scenario.bounds, Boolean(scenario.scramble), Boolean(scenario.urbanMap));
       this.instances.lod.reset();
     };
     if (scenario.urbanMap) {
-      return this.urbanMeshes.load(scenario.urbanMap).then((data) => {
+      return this.urbanMeshes.load(scenario.urbanMap).then(async (data) => {
         if (this.dead || request !== this.scenarioRequest) return;
-        install(mergeEnvironmentMeshes(data, createEnvironment(scenario)));
+        const merged = mergeEnvironmentMeshes(data, createEnvironment(scenario));
+        if (!merged.appearance) { install(merged); return; }
+        // Wait for every decode even after one fails, so no late ImageBitmap leaks.
+        const decoded = await Promise.allSettled(merged.appearance.atlases.map(atlas => Promise.resolve().then(() => createImageBitmap(atlas, {
+          imageOrientation: 'none', premultiplyAlpha: 'none', colorSpaceConversion: 'default',
+        }))));
+        const images = decoded.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+        try {
+          if (this.dead || request !== this.scenarioRequest) return;
+          if (images.length !== decoded.length) throw new Error('Could not decode PLATEAU photographs. Check the atlas image files and reload.');
+          install(merged, images);
+        } finally { for (const image of images) image.close(); }
       });
     }
     install(createEnvironment(scenario));
@@ -214,7 +270,7 @@ export class WebGPURenderer {
     this.camera.update(this.width / this.height);
     this.instances.update(previous, current, count, alpha, this.camera, this.height, options.quality);
     this.uniforms.set(this.camera.viewProjection, 0);
-    this.uniforms.set(this.camera.position, 16); this.uniforms[19] = 1;
+    this.uniforms.set(this.camera.position, 16); this.uniforms[19] = Number(this.photographicAppearance);
     this.uniforms.set(LIGHTING.direction, 20); this.uniforms[23] = LIGHTING.ambient;
     this.uniforms[24] = Number(options.debug);
     this.uniforms[25] = Number(options.signal?.phase !== 'red');
@@ -233,7 +289,9 @@ export class WebGPURenderer {
     let drawCalls = 0, triangles = 0;
     if (this.environment) {
       pass.setPipeline(this.environmentPipeline);
+      pass.setBindGroup(1, this.environment.appearanceGroup);
       pass.setVertexBuffer(0, this.environment.vertex); pass.setIndexBuffer(this.environment.index, 'uint32');
+      pass.setVertexBuffer(1, this.environment.coordinates);
       pass.drawIndexed(this.environment.indexCount);
       drawCalls++; triangles += this.environment.indexCount / 3;
     }
@@ -267,7 +325,7 @@ export class WebGPURenderer {
     this.scenarioRequest++;
     this.urbanMeshes.clear();
     this.camera.destroy(); this.instances.destroy(); this.sceneBuffer.destroy(); this.depth?.destroy();
-    this.environment?.vertex.destroy(); this.environment?.index.destroy();
+    this.releaseEnvironment();
     for (const mesh of this.humans) { mesh.vertex.destroy(); mesh.index.destroy(); }
     this.context.unconfigure(); this.device.destroy();
   }

@@ -17,19 +17,22 @@ from __future__ import annotations
 import argparse
 from array import array
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import math
 from pathlib import Path
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
 import mapbox_earcut
 import numpy as np
 from pyproj import Transformer
+from PIL import Image
 from shapely import make_valid
-from shapely.geometry import GeometryCollection, Polygon, box
+from shapely.geometry import GeometryCollection, Point, Polygon, box
 from shapely.ops import unary_union
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -58,6 +61,7 @@ NS = {
     'bldg': 'http://www.opengis.net/citygml/building/2.0',
     'tran': 'http://www.opengis.net/citygml/transportation/2.0',
     'xlink': 'http://www.w3.org/1999/xlink',
+    'app': 'http://www.opengis.net/citygml/appearance/2.0',
 }
 GML_ID = '{' + NS['gml'] + '}id'
 HREF = '{' + NS['xlink'] + '}href'
@@ -105,7 +109,7 @@ def from_json(items):
                            for ring in item['rings'][1:]]) for item in items])
 
 
-def project_ring(ring):
+def project_ring_with_indices(ring):
     pos = ring.find('.//gml:posList', NS)
     if pos is None:
         values = [float(v) for p in ring.findall('.//gml:pos', NS)
@@ -116,23 +120,77 @@ def project_ring(ring):
         raise ValueError('Expected EPSG:6697 three-dimensional coordinates')
     points = np.asarray(values, dtype=np.float64).reshape((-1, 3))
     if len(points) < 3:
-        return np.empty((0, 3))
+        return np.empty((0, 3)), np.empty(0, dtype=np.int64)
     east, north = PROJECT.transform(points[:, 1], points[:, 0])
     result = np.column_stack((east - ORIGIN_E, points[:, 2], ORIGIN_N - north))
     # Closed rings and consecutive duplicate vertices are redundant for earcut.
-    result = result[np.r_[True, np.any(np.abs(np.diff(result, axis=0)) > 1e-8, axis=1)]]
+    kept = np.flatnonzero(np.r_[True, np.any(np.abs(np.diff(result, axis=0)) > 1e-8, axis=1)])
+    result = result[kept]
     if len(result) > 1 and np.linalg.norm(result[0] - result[-1]) < 1e-8:
         result = result[:-1]
-    return result
+        kept = kept[:-1]
+    return result, kept
+
+
+def project_ring(ring):
+    return project_ring_with_indices(ring)[0]
+
+
+def ring_elements(element):
+    exterior = element.find('gml:exterior/gml:LinearRing', NS)
+    return ([exterior] + element.findall('gml:interior/gml:LinearRing', NS)
+            if exterior is not None else [])
 
 
 def polygon_rings(element):
-    exterior = element.find('gml:exterior/gml:LinearRing', NS)
-    if exterior is None:
-        return []
-    result = [project_ring(exterior)]
-    result.extend(project_ring(r) for r in element.findall('gml:interior/gml:LinearRing', NS))
+    result = [project_ring(r) for r in ring_elements(element)]
     return [r for r in result if len(r) >= 3]
+
+
+def read_appearances(path):
+    """Read referenced images/UVs without loading source raster data or geometry."""
+    result = {}
+    for event, element in ET.iterparse(path, events=('start', 'end')):
+        name = localname(element.tag)
+        if event == 'start' and name == 'cityObjectMember':
+            break  # These pinned files store global Appearance before buildings.
+        if event == 'end' and name == 'ParameterizedTexture':
+            uri = element.findtext('app:imageURI', namespaces=NS)
+            if not uri or uri.startswith('/') or '..' in Path(uri).parts or '://' in uri:
+                raise ValueError(f'Expected a safe relative imageURI, got {uri}')
+            for target in element.findall('app:target', NS):
+                identifier = target.get('uri', '').lstrip('#')
+                rings = {}
+                for coordinates in target.findall('.//app:textureCoordinates', NS):
+                    values = np.asarray([float(v) for v in (coordinates.text or '').split()], dtype=np.float64)
+                    if len(values) % 2 or not np.isfinite(values).all():
+                        raise ValueError(f'Invalid UV coordinates for {identifier}')
+                    rings[coordinates.get('ring', '').lstrip('#')] = values.reshape((-1, 2))
+                if identifier in result and result[identifier]['imageURI'] != uri:
+                    raise ValueError(f'Multiple image mappings for {identifier}')
+                result[identifier] = {'imageURI': uri, 'rings': rings}
+            element.clear()
+    return result
+
+
+def polygon_uvs(polygon, appearance):
+    """Apply the geometry's exact retained indices to each exterior/interior UV ring."""
+    result = []
+    for element in ring_elements(polygon):
+        points, kept = project_ring_with_indices(element)
+        if len(points) < 3:
+            continue
+        ring_id = element.get(GML_ID)
+        uv = appearance['rings'].get(ring_id)
+        if uv is None or len(uv) <= int(kept.max()):
+            raise ValueError(f'Missing/short texture coordinates for ring {ring_id}')
+        uv = uv[kept].copy()
+        if (uv < -1e-5).any() or (uv > 1 + 1e-5).any():
+            raise ValueError(f'Texture UV outside source image for {ring_id}')
+        uv = np.clip(uv, 0, 1)
+        uv[:, 1] = 1 - uv[:, 1]  # CityGML bottom-left -> image/GPU top-left.
+        result.append(uv)
+    return result
 
 
 def horizontal_polygon(rings):
@@ -177,7 +235,7 @@ def selected_polygons(building, lod):
         for surface in building.findall('.//bldg:' + name, NS):
             for polygon in surface.findall('.//gml:Polygon', NS):
                 kinds[polygon.get(GML_ID)] = name
-    return [(key, polygon_rings(polygon), kinds.get(key, 'WallSurface'))
+    return [(key, polygon_rings(polygon), kinds.get(key, 'WallSurface'), polygon)
             for key, polygon in selected.items()]
 
 
@@ -185,11 +243,12 @@ class Mesh:
     def __init__(self):
         self.vertices = array('f')
         self.indices = array('I')
+        self.appearance = array('f')  # Separate 12-byte UV + image/page buffer.
         self.skipped_degenerate = 0
         self.reversed_buildings = 0
         self.maximum_planarity_error = 0.0
 
-    def add(self, rings, color, material=0, normal_hint=None):
+    def add(self, rings, color, material=0, normal_hint=None, appearance=None):
         if not rings or len(rings[0]) < 3:
             return
         outer = rings[0]
@@ -214,6 +273,14 @@ class Mesh:
         start = len(self.vertices) // 10
         for point in points:
             self.vertices.extend([*point, *normal, *color, float(material)])
+        if appearance is None:
+            self.appearance.extend([0., 0., -1.] * len(points))
+        else:
+            uv_rings, image_id = appearance
+            if [len(r) for r in uv_rings] != [len(r) for r in rings]:
+                raise ValueError('UV rings do not match retained geometry vertices')
+            for u, v in np.vstack(uv_rings):
+                self.appearance.extend([float(u), float(v), float(image_id)])
         packed_points = points.astype(np.float32).astype(np.float64)
         for a, b, c in indices:
             cross = np.cross(packed_points[b] - packed_points[a], packed_points[c] - packed_points[a])
@@ -263,6 +330,174 @@ class Mesh:
                 'maximumSourcePolygonPlanarityErrorMeters': round(self.maximum_planarity_error, 6)}
 
 
+class TextureAtlas:
+    SIZE = 2048
+    PADDING = 8
+    MAX_PAGES = 5
+
+    def __init__(self, cache, download, previous_manifest):
+        self.cache, self.download = cache, download
+        self.requests, self.image_ids = [], {}
+        self.expected = {r['imageURI']: r['sha256']
+                         for r in previous_manifest.get('appearanceSources', [])}
+
+    def register(self, appearance, distance):
+        uri = appearance['imageURI']
+        if uri in self.image_ids:
+            image_id = self.image_ids[uri]
+            self.requests[image_id]['distance'] = min(distance, self.requests[image_id]['distance'])
+            return image_id
+        image_id = len(self.requests)
+        self.image_ids[uri] = image_id
+        self.requests.append({'imageURI': uri, 'distance': float(distance), 'id': image_id})
+        return image_id
+
+    def fetch(self, request):
+        uri = request['imageURI']
+        path = self.cache / uri
+        url = f'{BASE}/udx/bldg/{uri}'
+        if not path.exists():
+            if not self.download:
+                raise ValueError(f'Missing texture {path}; use --download')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            for attempt in range(3):
+                try:
+                    with urllib.request.urlopen(url, timeout=40) as response:
+                        data = response.read()
+                    part = path.with_suffix('.part')
+                    part.write_bytes(data)
+                    part.replace(path)
+                    break
+                except Exception:
+                    if attempt == 2:
+                        raise
+                    time.sleep(.5 * (attempt + 1))
+        checksum = digest(path)
+        if uri in self.expected and checksum != self.expected[uri]:
+            raise ValueError(f'Texture source hash changed: {uri}; review upstream changes first')
+        with Image.open(path) as image:
+            width, height = image.size
+            image.verify()
+        return {**request, 'path': path, 'url': url, 'width': width, 'height': height,
+                'bytes': path.stat().st_size, 'sha256': checksum}
+
+    def pack(self, records, quality_step):
+        rectangles = []
+        for record in records:
+            distance = record['distance']
+            if distance <= 75:
+                cap = max(256, int(768 * .98 ** quality_step))
+            elif distance <= 150:
+                cap = max(96, int(256 * .93 ** quality_step))
+            else:
+                cap = max(48, int(128 * .82 ** quality_step))
+            scale = min(1., cap / max(record['width'], record['height']))
+            width = max(1, int(round(record['width'] * scale)))
+            height = max(1, int(round(record['height'] * scale)))
+            rectangles.append({**record, 'packedWidth': width, 'packedHeight': height})
+        rectangles.sort(key=lambda r: (-r['packedHeight'], -r['packedWidth'], r['imageURI']))
+        pages = []
+        placements = {}
+        for rectangle in rectangles:
+            width = rectangle['packedWidth'] + 2 * self.PADDING
+            height = rectangle['packedHeight'] + 2 * self.PADDING
+            placed = False
+            for page_id, shelves in enumerate(pages):
+                for shelf in shelves:
+                    if height <= shelf['height'] and shelf['x'] + width <= self.SIZE:
+                        placements[rectangle['id']] = {**rectangle, 'page': page_id,
+                                                       'x': shelf['x'], 'y': shelf['y']}
+                        shelf['x'] += width
+                        placed = True
+                        break
+                if placed:
+                    break
+                y = sum(s['height'] for s in shelves)
+                if y + height <= self.SIZE:
+                    shelves.append({'x': width, 'y': y, 'height': height})
+                    placements[rectangle['id']] = {**rectangle, 'page': page_id, 'x': 0, 'y': y}
+                    placed = True
+                    break
+            if not placed:
+                pages.append([{'x': width, 'y': 0, 'height': height}])
+                placements[rectangle['id']] = {**rectangle, 'page': len(pages) - 1, 'x': 0, 'y': 0}
+        return placements, len(pages)
+
+    def paste(self, page, image, x, y):
+        width, height = image.size
+        pad = self.PADDING
+        page.paste(image, (x + pad, y + pad))
+        # Edge extrusion protects source edges during bilinear/mip sampling.
+        page.paste(image.crop((0, 0, width, 1)).resize((width, pad)), (x + pad, y))
+        page.paste(image.crop((0, height - 1, width, height)).resize((width, pad)), (x + pad, y + pad + height))
+        page.paste(image.crop((0, 0, 1, height)).resize((pad, height)), (x, y + pad))
+        page.paste(image.crop((width - 1, 0, width, height)).resize((pad, height)), (x + pad + width, y + pad))
+        for cx, cy, px, py in [(0, 0, x, y), (width - 1, 0, x + pad + width, y),
+                               (0, height - 1, x, y + pad + height),
+                               (width - 1, height - 1, x + pad + width, y + pad + height)]:
+            page.paste(Image.new('RGB', (pad, pad), image.getpixel((cx, cy))), (px, py))
+
+    def create(self, mesh, output):
+        if not self.requests:
+            raise ValueError('No photo textures selected')
+        print(f'Checking {len(self.requests)} source photographs', flush=True)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            records = list(pool.map(self.fetch, self.requests))
+        for step in range(30):
+            placements, page_count = self.pack(records, step)
+            if page_count <= self.MAX_PAGES:
+                break
+        else:
+            raise ValueError('Textures exceed the atlas GPU memory budget')
+        print(f'Packing {len(records)} images into {page_count} x {self.SIZE}² pages (quality step {step})', flush=True)
+        output.mkdir(parents=True, exist_ok=True)
+        atlas_paths = []
+        for page_id in range(page_count):
+            page = Image.new('RGB', (self.SIZE, self.SIZE), (190, 194, 198))
+            for placement in placements.values():
+                if placement['page'] != page_id:
+                    continue
+                with Image.open(placement['path']) as original:
+                    image = original.convert('RGB').resize((placement['packedWidth'], placement['packedHeight']),
+                                                           Image.Resampling.LANCZOS)
+                self.paste(page, image, placement['x'], placement['y'])
+            path = output / f'atlas-{page_id}.jpg'
+            page.save(path, 'JPEG', quality=90, subsampling=0, optimize=True)
+            atlas_paths.append({'path': f'data/shibuya/{path.name}', 'sha256': digest(path)})
+        coordinates = np.frombuffer(mesh.appearance, dtype=np.float32).reshape((-1, 3))
+        textured = coordinates[:, 2] >= 0
+        image_ids = coordinates[textured, 2].astype(np.int64)
+        mapping = np.array([[placements[i]['x'] + self.PADDING, placements[i]['y'] + self.PADDING,
+                             placements[i]['packedWidth'], placements[i]['packedHeight'], placements[i]['page']]
+                            for i in range(len(records))], dtype=np.float64)[image_ids]
+        coordinates[textured, 0] = (mapping[:, 0] + coordinates[textured, 0] * mapping[:, 2]) / self.SIZE
+        coordinates[textured, 1] = (mapping[:, 1] + coordinates[textured, 1] * mapping[:, 3]) / self.SIZE
+        coordinates[textured, 2] = mapping[:, 4]
+        assert len(coordinates) == len(mesh.vertices) // 10
+        assert np.isfinite(coordinates).all()
+        assert ((coordinates[textured, :2] >= 0) & (coordinates[textured, :2] <= 1)).all()
+        assert (coordinates[textured, 2] < page_count).all()
+        path = output / 'appearance.bin'
+        path.write_bytes(coordinates.astype('<f4', copy=False).tobytes())
+        mip_pixels = sum(max(1, self.SIZE >> level) ** 2 for level in range(int(math.log2(self.SIZE)) + 1))
+        summary = {'images': len(records), 'sourceBytes': sum(r['bytes'] for r in records),
+                   'sourcePixels': sum(r['width'] * r['height'] for r in records),
+                   'atlasPages': page_count, 'atlasWidth': self.SIZE, 'atlasHeight': self.SIZE,
+                   'atlasBytes': sum((output / Path(a['path']).name).stat().st_size for a in atlas_paths),
+                   'gpuTextureBytesWithMipmaps': mip_pixels * 4 * page_count,
+                   'coordinateBytes': path.stat().st_size, 'texturedVertices': int(textured.sum()),
+                   'paddingPixels': self.PADDING, 'qualityStep': step,
+                   'packedPixels': sum(p['packedWidth'] * p['packedHeight'] for p in placements.values())}
+        provenance = []
+        for r in sorted(records, key=lambda r: r['imageURI']):
+            p = placements[r['id']]
+            provenance.append({k: r[k] for k in ('imageURI', 'url', 'width', 'height', 'bytes', 'sha256')})
+            provenance[-1]['atlas'] = {'page': p['page'], 'x': p['x'] + self.PADDING,
+                                      'y': p['y'] + self.PADDING, 'width': p['packedWidth'], 'height': p['packedHeight']}
+        return ({'coordinates': 'data/shibuya/appearance.bin', 'coordinateSha256': digest(path),
+                 'width': self.SIZE, 'height': self.SIZE, 'atlases': atlas_paths}, summary, provenance)
+
+
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
@@ -292,12 +527,13 @@ def load_sources(cache, download):
     return records
 
 
-def buildings(sources, mesh):
+def buildings(sources, mesh, textures=None):
     footprints, records, seen = [], [], set()
     for source in sources:
         if source['kind'] != 'bldg':
             continue
         print(f"Reading buildings {source['mesh']}", flush=True)
+        appearances = read_appearances(source['path']) if textures is not None else {}
         for member in features(source['path']):
             building = member.find('bldg:Building', NS)
             if building is None:
@@ -312,7 +548,7 @@ def buildings(sources, mesh):
                 selected, lod = selected_polygons(building, 1), 1
             if not selected:
                 continue
-            ground_rings = [rings for _, rings, kind in selected if kind == 'GroundSurface']
+            ground_rings = [rings for _, rings, kind, _ in selected if kind == 'GroundSurface']
             footprint = union([horizontal_polygon(rings) for rings in ground_rings])
             if footprint.is_empty:
                 for name in ('lod0FootPrint', 'lod0RoofEdge'):
@@ -321,27 +557,37 @@ def buildings(sources, mesh):
                     if not footprint.is_empty:
                         break
             if footprint.is_empty:
-                footprint = union([horizontal_polygon(rings) for _, rings, _ in selected])
+                footprint = union([horizontal_polygon(rings) for _, rings, _, _ in selected])
             if footprint.is_empty or not footprint.intersects(RENDER):
                 continue
-            all_points = np.vstack([r for _, rings, _ in selected for r in rings])
+            all_points = np.vstack([r for _, rings, _, _ in selected for r in rings])
             # Include installations if their base is lower than GroundSurface. This
             # prevents tiny negative geometry while keeping one vertical translation.
             base_height = float(all_points[:, 1].min())
             vertex_start, index_start = len(mesh.vertices) // 10, len(mesh.indices)
             tint = int(hashlib.sha256(identifier.encode()).hexdigest()[:2], 16) / 255
-            for _, rings, kind in selected:
+            distance = footprint.distance(Point(0, 0))
+            textured_polygons = 0
+            for polygon_id, rings, kind, element in selected:
                 normalized = [r - np.array([0., base_height, 0.]) for r in rings]
                 color = ([0.39, 0.43, 0.46] if kind == 'RoofSurface' else
                          [0.50 + tint * .13, 0.52 + tint * .10, 0.54 + tint * .07])
-                mesh.add(normalized, color)
+                appearance = appearances.get(polygon_id)
+                vertex_appearance = None
+                if appearance is not None:
+                    uv_rings = polygon_uvs(element, appearance)
+                    image_id = textures.register(appearance, distance)
+                    vertex_appearance = (uv_rings, image_id)
+                    textured_polygons += 1
+                mesh.add(normalized, color, appearance=vertex_appearance)
             mesh.orient_building(vertex_start, index_start)
             footprints.append(footprint)
             years = sorted({e.text for e in building.iter() if localname(e.tag) == 'surveyYear'})
             records.append({'id': identifier, 'lod': lod,
                             'baseHeightMeters': round(base_height, 4),
                             'creationDate': building.findtext('core:creationDate', namespaces=NS),
-                            'surveyYearAttributes': years})
+                            'surveyYearAttributes': years,
+                            'selectedPolygons': len(selected), 'texturedPolygons': textured_polygons})
     return union(footprints), records
 
 
@@ -407,6 +653,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cache-dir', type=Path, default=Path('/tmp/fluxity-plateau-source'))
     parser.add_argument('--download', action='store_true')
+    parser.add_argument('--texture-cache', type=Path, default=Path('/tmp/fluxity-plateau-textures'))
     parser.add_argument('--layout', type=Path, default=ROOT / 'data/shibuya/layout.json')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'public/data/shibuya')
     parser.add_argument('--map-output', type=Path, default=ROOT / 'src/scenarios/data/shibuya-map.json')
@@ -415,8 +662,15 @@ def main():
     args.cache_dir.mkdir(parents=True, exist_ok=True)
     sources = load_sources(args.cache_dir, args.download)
     layout = json.loads(args.layout.read_text()) if args.layout.exists() else {}
+    previous_path = args.output_dir / 'manifest.json'
+    if not previous_path.exists():
+        # A clean output directory still verifies against the repository's
+        # checked-in source-photo hashes, instead of silently losing the lock.
+        previous_path = ROOT / 'public/data/shibuya/manifest.json'
+    previous_manifest = json.loads(previous_path.read_text()) if previous_path.exists() else {}
+    textures = None if args.polygons_only else TextureAtlas(args.texture_cache, args.download, previous_manifest)
     mesh = Mesh()
-    footprints, building_records = buildings(sources, mesh)
+    footprints, building_records = buildings(sources, mesh, textures)
     raw, road_counts = roads(sources)
     corrections = from_json(layout.get('pedestrianAreas', []))
     blocked = clean(from_json(layout.get('blockedAreas', [])).difference(footprints).intersection(RENDER))
@@ -485,6 +739,12 @@ def main():
         # same import even when a browser cache straddles a static deployment.
         data['mesh']['vertexSha256'] = vertex_hash
         data['mesh']['indexSha256'] = index_hash
+        appearance, appearance_summary, appearance_sources = textures.create(mesh, args.output_dir)
+        appearance_summary['texturedBuildings'] = sum(b['texturedPolygons'] > 0 for b in building_records)
+        appearance_summary['selectedBuildings'] = len(building_records)
+        appearance_summary['texturedPolygons'] = sum(b['texturedPolygons'] for b in building_records)
+        appearance_summary['selectedPolygons'] = sum(b['selectedPolygons'] for b in building_records)
+        data['appearance'] = appearance
         write_json(args.map_output, data)
         manifest = {
             'schemaVersion': 1, 'dataset': '3D都市モデル（Project PLATEAU）渋谷区（2025年度）',
@@ -495,7 +755,9 @@ def main():
             'processing': ['500m square crop; intersecting buildings retained whole',
                            'LOD2 geometry preferred, LOD1 fallback explicitly counted',
                            'Per-building minimum geometry height subtracted; roads flattened',
-                           'Textures omitted; flat materials; semantic road polygons unioned',
+                           'Source photo UVs retained, V flipped to top-left image coordinates',
+                           'Distance-prioritized photo resizing and padded 2048px JPEG atlases',
+                           'Semantic road polygons unioned; untextured surfaces retain material colors',
                            'Pedestrian calibration and crossing overlays from layout.json'],
             'limitations': ['Single ground floor; not a surveyed present-day reconstruction',
                             'Edition year is not geometry acquisition year',
@@ -517,8 +779,11 @@ def main():
                      'indices': {'bytes': indices_path.stat().st_size, 'sha256': index_hash}},
             'statistics': statistics, 'validation': validation, 'roadFunctionCounts': road_counts,
             'buildingSourceMetadata': building_records,
+            'appearance': appearance, 'appearanceSummary': appearance_summary,
+            'appearanceSources': appearance_sources,
         }
         write_json(args.output_dir / 'manifest.json', manifest)
+        print(json.dumps({'appearance': appearance_summary}, indent=2))
     print(json.dumps({'statistics': statistics, 'validation': validation,
                       'roadFunctionCounts': road_counts, 'sidewalkArea': navigation_sidewalks.area,
                       'walkableArea': walkable.area, 'calibration': '/tmp/fluxity-shibuya-polygons.json'}, indent=2))

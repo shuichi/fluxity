@@ -34,6 +34,14 @@ export interface UrbanMap {
     /** Content digests bind the rendered geometry to this exact navigation map. */
     vertexSha256: string; indexSha256: string;
   };
+  /** Optional photographic appearance; coordinates are float32 u,v,page per mesh vertex. */
+  appearance?: {
+    coordinates: string;
+    coordinateSha256: string;
+    width: number;
+    height: number;
+    atlases: { path: string; sha256: string }[];
+  };
   statistics: { buildings: number; lod2Buildings: number; lod1Buildings: number; triangles: number };
 }
 export interface Scenario {

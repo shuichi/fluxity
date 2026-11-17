@@ -2314,6 +2314,9 @@ input[type=range]::-moz-range-thumb {
   }
 }
 
+.appearance-row { margin-top: 14px; }
+.appearance-row[hidden] { display: none; }
+
 /* Keep the source readable over the city without intercepting camera gestures. */
 .map-credit {
   margin-top: 9px;

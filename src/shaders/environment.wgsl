@@ -2,16 +2,21 @@ struct Scene {
   viewProjection: mat4x4<f32>, camera: vec4<f32>, sun: vec4<f32>, settings: vec4<f32>, fog: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> scene: Scene;
+@group(1) @binding(0) var photographs: texture_2d_array<f32>;
+@group(1) @binding(1) var photoSampler: sampler;
 struct VertexInput {
   @location(0) position: vec3<f32>,
   @location(1) normal: vec3<f32>,
   @location(2) color: vec4<f32>,
+  @location(3) appearance: vec3<f32>,
 };
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) normal: vec3<f32>,
   @location(1) color: vec4<f32>,
   @location(2) world: vec3<f32>,
+  @location(3) uv: vec2<f32>,
+  @location(4) @interpolate(flat) page: i32,
 };
 @vertex fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
@@ -19,12 +24,18 @@ struct VertexOutput {
   output.normal = input.normal;
   output.color = input.color;
   output.world = input.position;
+  output.uv = input.appearance.xy;
+  output.page = i32(input.appearance.z);
   return output;
 }
 @fragment fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   var color = input.color.rgb;
   // Derivatives must be evaluated uniformly, before material-dependent branches.
   let antialias = max(fwidth(input.world.xz), vec2<f32>(0.008));
+  // Sample uniformly; implicit derivatives are invalid inside a varying material branch.
+  let photograph = textureSample(photographs, photoSampler, input.uv, max(input.page, 0));
+  let textured = input.page >= 0 && scene.camera.w > 0.5;
+  if (textured) { color = photograph.rgb; }
   let material = input.color.a;
   let roadDistance = min(abs(input.world.x), abs(input.world.z));
   let scramble = scene.settings.z > 0.5;
@@ -60,7 +71,8 @@ struct VertexOutput {
     emissive = select(0.0,1.0,lampOn);
   }
   let diffuse = max(dot(normalize(input.normal), scene.sun.xyz), 0.0);
-  let shade = mix(scene.sun.w + (1.0 - scene.sun.w) * diffuse, 1.0, emissive);
+  // Photographs already include lighting. Keep their color and apply only gentle shape shading.
+  let shade = select(mix(scene.sun.w + (1.0 - scene.sun.w) * diffuse, 1.0, emissive), 0.82 + 0.18 * diffuse, textured);
   let distance = length(input.world - scene.camera.xyz);
   let fogAmount = smoothstep(scene.settings.w, scene.fog.w, distance) * 0.72;
   return vec4<f32>(mix(color * shade, scene.fog.rgb, fogAmount), 1.0);

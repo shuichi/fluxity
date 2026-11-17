@@ -13,6 +13,7 @@ const harness = vi.hoisted(() => ({
   },
   renderer: {
     setScenario: vi.fn(), destroy: vi.fn(), camera: { reset: vi.fn(), setView: vi.fn() },
+    setPhotographicAppearance: vi.fn(),
     render: vi.fn((_previous: Float32Array, _current: Float32Array, count: number) => ({
       visible: count, lodCounts: [count, 0, 0], drawCalls: 5, triangles: count * 100,
       cpuMs: 1, resolution: '1280 × 720',
@@ -136,6 +137,19 @@ describe('application / worker integration', () => {
       expect.any(Float32Array), expect.any(Float32Array), initial.config.count, expect.any(Number),
       expect.objectContaining({ signal }),
     );
+    expect(harness.controls.setPaused).toHaveBeenLastCalledWith(true);
+  });
+
+  it('changes building appearance while paused without resetting or advancing the crowd', () => {
+    const worker = FakeWorker.instance;
+    controls().onPause();
+    const initial = worker.latestInit(), messageCount = worker.messages.length;
+    controls().onAppearance(false);
+    expect(harness.renderer.setPhotographicAppearance).toHaveBeenLastCalledWith(false);
+    controls().onAppearance(true);
+    expect(harness.renderer.setPhotographicAppearance).toHaveBeenLastCalledWith(true);
+    expect(worker.latestInit()).toBe(initial);
+    expect(worker.messages).toHaveLength(messageCount);
     expect(harness.controls.setPaused).toHaveBeenLastCalledWith(true);
   });
 

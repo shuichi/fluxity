@@ -44,6 +44,7 @@ export class App {
   private sceneReady = false;
   private paused = false;
   private quality: Quality = 'balanced';
+  private photographicAppearance = true;
   private debug = false;
   private frameId = 0;
   private lastFrame = 0;
@@ -86,6 +87,11 @@ export class App {
         this.quality = quality;
       },
       onDebug: enabled => { this.debug = enabled; },
+      onAppearance: enabled => {
+        this.cancelBenchmark('Benchmark stopped: appearance changed.');
+        this.photographicAppearance = enabled;
+        this.renderer?.setPhotographicAppearance(enabled);
+      },
       onCamera: view => {
         if (view === 'reset') this.renderer?.camera.reset();
         else this.renderer?.camera.setView(view);
@@ -101,6 +107,7 @@ export class App {
       this.controls.setStatus('Connecting to your GPU', 'loading');
       this.renderer = await WebGPURenderer.create(this.controls.canvas, message => this.fail(message));
       if (this.destroyed || this.failed) { this.renderer.destroy(); this.renderer = null; return; }
+      this.renderer.setPhotographicAppearance(this.photographicAppearance);
       this.worker = new Worker(new URL('../simulation/SimulationWorker.ts', import.meta.url), { type: 'module' });
       this.worker.onmessage = (event: MessageEvent<WorkerOutput>) => this.onWorkerMessage(event.data);
       this.worker.onerror = event => this.fail(`Simulation worker: ${event.message || 'could not start'}`);

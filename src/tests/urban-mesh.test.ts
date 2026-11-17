@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UrbanMap } from '../types';
-import { decodeUrbanMesh, mergeEnvironmentMeshes, UrbanMeshLoader, urbanAssetURL } from '../renderer/UrbanMesh';
+import { decodeUrbanMesh, decodeAppearanceCoordinates, mergeEnvironmentMeshes, UrbanMeshLoader, urbanAssetURL } from '../renderer/UrbanMesh';
 import { WebGPURenderer } from '../renderer/WebGPURenderer';
 import { plaza } from '../scenarios/plaza';
 import { syntheticShibuya } from './fixtures/synthetic-shibuya';
@@ -34,6 +34,21 @@ function fixture(): { map: UrbanMap; vertices: Float32Array<ArrayBuffer>; indice
   };
 }
 
+function photographicFixture() {
+  const data = fixture();
+  const coordinates = new Float32Array([0,0,0, 0,1,0, 1,0,0]);
+  const image = new Uint8Array([1,2,3,4]).buffer;
+  data.map.appearance = {
+    coordinates: 'data/shibuya/appearance.bin', coordinateSha256: sha256(coordinates.buffer), width: 2, height: 2,
+    atlases: [{ path: 'data/shibuya/atlas-0.png', sha256: sha256(image) }],
+  };
+  const fetcher = vi.fn(async (url: string) => new Response(
+    url.endsWith('vertices.bin') ? data.vertices.buffer : url.endsWith('indices.bin') ? data.indices.buffer
+      : url.endsWith('appearance.bin') ? coordinates.buffer : image,
+  ));
+  return { ...data, coordinates, image, fetcher };
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('PLATEAU static mesh loading', () => {
@@ -49,6 +64,14 @@ describe('PLATEAU static mesh loading', () => {
     expect(mesh.indices.length / 3).toBe(shibuyaMap.statistics.triangles);
     expect(shibuyaMap.statistics.lod2Buildings).toBeGreaterThan(0);
     expect(shibuyaMap.statistics.buildings).toBe(shibuyaMap.statistics.lod2Buildings + shibuyaMap.statistics.lod1Buildings);
+    const appearance = (shibuyaMap as UrbanMap).appearance;
+    if (appearance) {
+      const coordinates = read(appearance.coordinates);
+      expect(sha256(coordinates)).toBe(appearance.coordinateSha256);
+      const decoded = decodeAppearanceCoordinates(shibuyaMap, coordinates, mesh.indices);
+      expect(Array.from(decoded).some((value, offset) => offset % 3 === 2 && value >= 0)).toBe(true);
+      for (const atlas of appearance.atlases) expect(sha256(read(atlas.path))).toBe(atlas.sha256);
+    }
   });
 
   it('resolves same-origin assets under GitHub Pages and rejects escaping paths', () => {
@@ -147,24 +170,74 @@ describe('PLATEAU static mesh loading', () => {
     }
     expect(materials).toEqual(new Set([0,-1,-2]));
   });
+
+  it('validates photographic coordinates, page indices and triangle consistency', () => {
+    const { map, coordinates, indices } = photographicFixture();
+    expect(decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toEqual(coordinates);
+    expect(() => decodeAppearanceCoordinates(map, coordinates.buffer.slice(4), indices)).toThrow('incomplete');
+    coordinates[0] = NaN;
+    expect(() => decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toThrow('invalid UV');
+    coordinates[0] = 1.01;
+    expect(() => decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toThrow('invalid UV');
+    coordinates[0] = 0; coordinates[2] = 1;
+    expect(() => decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toThrow('atlas pages');
+    coordinates[2] = -1;
+    expect(() => decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toThrow('one triangle');
+    map.appearance!.width = map.appearance!.height = 8192;
+    expect(() => decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toThrow('memory budget');
+  });
+
+  it('binds UV and image contents to the map version and preserves untextured fixture sentinels', async () => {
+    const { map, coordinates, vertices, indices, image, fetcher } = photographicFixture();
+    vi.stubGlobal('document', { baseURI: 'https://example.com/fluxity/' });
+    vi.stubGlobal('fetch', fetcher);
+    const loader = new UrbanMeshLoader();
+    const data = await loader.load(map);
+    expect(data.appearance?.coordinates).toEqual(coordinates);
+    expect(await data.appearance!.atlases[0].arrayBuffer()).toEqual(image);
+    const merged = mergeEnvironmentMeshes(data, { vertices, indices });
+    expect(Array.from(merged.appearance!.coordinates.slice(9))).toEqual([0,0,-1,0,0,-1,0,0,-1]);
+    expect(data.appearance!.coordinates.length).toBe(9);
+    loader.clear();
+    coordinates[0] = 0.2;
+    await expect(loader.load(map)).rejects.toThrow('different versions');
+    coordinates[0] = 0;
+    new Uint8Array(image)[0] = 10;
+    await expect(loader.load(map)).rejects.toThrow('different versions');
+    new Uint8Array(image)[0] = 1;
+    await expect(loader.load(map)).resolves.toHaveProperty('appearance');
+  });
 });
 
 async function gpuHarness() {
   const buffers: { destroy: ReturnType<typeof vi.fn> }[] = [];
+  const textures: { destroy: ReturnType<typeof vi.fn> }[] = [];
   const context = { configure: vi.fn(), unconfigure: vi.fn() };
-  const limits = { maxStorageBufferBindingSize: 128 * 1024 * 1024, maxBufferSize: 256 * 1024 * 1024, maxStorageBuffersPerShaderStage: 8 };
+  const limits = { maxStorageBufferBindingSize: 128 * 1024 * 1024, maxBufferSize: 256 * 1024 * 1024, maxStorageBuffersPerShaderStage: 8,
+    maxTextureDimension2D: 8192, maxTextureArrayLayers: 256 };
   const device = Object.assign(new EventTarget(), {
     limits, lost: new Promise(() => {}), destroy: vi.fn(),
+    queue: { writeTexture: vi.fn(), copyExternalImageToTexture: vi.fn(), submit: vi.fn() },
     createBuffer: vi.fn(({ size }: { size: number }) => {
       const buffer = { getMappedRange: () => new ArrayBuffer(size), unmap: vi.fn(), destroy: vi.fn() };
       buffers.push(buffer); return buffer;
     }),
     createBindGroupLayout: () => ({}), createBindGroup: () => ({}), createPipelineLayout: () => ({}),
+    createSampler: () => ({}),
+    createTexture: vi.fn(() => {
+      const texture = { createView: vi.fn(() => ({})), destroy: vi.fn() };
+      textures.push(texture); return texture;
+    }),
+    createRenderPipeline: () => ({ getBindGroupLayout: () => ({}) }),
+    createCommandEncoder: () => ({ finish: () => ({}), beginRenderPass: () => ({
+      setPipeline: vi.fn(), setBindGroup: vi.fn(), draw: vi.fn(), end: vi.fn(),
+    }) }),
     createShaderModule: () => ({ getCompilationInfo: async () => ({ messages: [] }) }),
     pushErrorScope: vi.fn(), popErrorScope: async () => null, createRenderPipelineAsync: async () => ({}),
   });
   vi.stubGlobal('GPUBufferUsage', { VERTEX: 1, INDEX: 2, UNIFORM: 4, COPY_DST: 8, STORAGE: 16 });
   vi.stubGlobal('GPUShaderStage', { VERTEX: 1, FRAGMENT: 2 });
+  vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 1, COPY_DST: 2, RENDER_ATTACHMENT: 4 });
   vi.stubGlobal('window', { isSecureContext: true });
   vi.stubGlobal('document', { baseURI: 'https://example.com/fluxity/' });
   vi.stubGlobal('navigator', { gpu: {
@@ -172,7 +245,7 @@ async function gpuHarness() {
     getPreferredCanvasFormat: () => 'bgra8unorm',
   } });
   const canvas = Object.assign(new EventTarget(), { getContext: () => context });
-  return { renderer: await WebGPURenderer.create(canvas as unknown as HTMLCanvasElement), buffers, device };
+  return { renderer: await WebGPURenderer.create(canvas as unknown as HTMLCanvasElement), buffers, textures, device };
 }
 
 describe('scenery GPU lifetime', () => {
@@ -213,5 +286,62 @@ describe('scenery GPU lifetime', () => {
     expect(buffers).toHaveLength(allocated);
     expect(device.destroy).toHaveBeenCalledOnce();
     for (const buffer of buffers) expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('redecodes cached compressed photographs on reentry and closes every bitmap after upload', async () => {
+    const { map, fetcher } = photographicFixture();
+    const { renderer, buffers, textures } = await gpuHarness();
+    const images: { width: number; height: number; close: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal('fetch', fetcher);
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => {
+      const image = { width: 2, height: 2, close: vi.fn() }; images.push(image); return image;
+    }));
+    const scenario = { ...syntheticShibuya, urbanMap: map };
+    await renderer.setScenario(scenario);
+    expect(images[0].close).toHaveBeenCalledOnce();
+    renderer.setPhotographicAppearance(false); renderer.setPhotographicAppearance(true);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    renderer.setScenario(plaza);
+    await renderer.setScenario(scenario);
+    expect(images).toHaveLength(2);
+    expect(images[1].close).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    renderer.destroy();
+    for (const resource of [...buffers, ...textures]) expect(resource.destroy).toHaveBeenCalledOnce();
+  });
+
+  it.each(['switch', 'destroy'] as const)('closes late decoded photographs after a scenario %s', async action => {
+    const { map, fetcher } = photographicFixture();
+    const { renderer, buffers, textures } = await gpuHarness();
+    const image = { width: 2, height: 2, close: vi.fn() };
+    let release!: (value: unknown) => void, started!: () => void;
+    const decoding = new Promise<void>(resolve => { started = resolve; });
+    vi.stubGlobal('fetch', fetcher);
+    vi.stubGlobal('createImageBitmap', vi.fn(() => { started(); return new Promise(resolve => { release = resolve; }); }));
+    const loading = renderer.setScenario({ ...syntheticShibuya, urbanMap: map });
+    await decoding;
+    if (action === 'switch') renderer.setScenario(plaza); else renderer.destroy();
+    const allocations = buffers.length + textures.length;
+    release(image); await loading;
+    expect(buffers.length + textures.length).toBe(allocations);
+    expect(image.close).toHaveBeenCalledOnce();
+    renderer.destroy();
+    for (const resource of [...buffers, ...textures]) expect(resource.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('closes successful image decodes if another atlas fails and leaves the current scenery intact', async () => {
+    const { map, fetcher } = photographicFixture();
+    map.appearance!.atlases.push({ ...map.appearance!.atlases[0] });
+    const { renderer, buffers, textures } = await gpuHarness();
+    renderer.setScenario(plaza);
+    const allocations = buffers.length + textures.length;
+    const image = { width: 2, height: 2, close: vi.fn() };
+    vi.stubGlobal('fetch', fetcher);
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValueOnce(image).mockRejectedValueOnce(new Error('invalid image')));
+    await expect(renderer.setScenario({ ...syntheticShibuya, urbanMap: map })).rejects.toThrow('Could not decode');
+    expect(image.close).toHaveBeenCalledOnce();
+    expect(buffers.length + textures.length).toBe(allocations);
+    renderer.destroy();
+    for (const resource of [...buffers, ...textures]) expect(resource.destroy).toHaveBeenCalledOnce();
   });
 });

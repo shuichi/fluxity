@@ -1,4 +1,41 @@
-# Verification — PLATEAU update, 2026-11-18
+# Verification — photographic buildings, 2026-11-18
+
+- `npm test`: **87 tests passed across 13 files**; `npm run build` passed including strict TypeScript checking.
+- Python conversion tests: **13 passed**, including matching geometry/UV deduplication, closed rings, holes, V-axis conversion, reversed triangles, atlas packing and rejection of changed source-image hashes.
+- Every one of the **440 buildings** has photo-mapped surfaces. The selected source geometry has **46,173 textured polygons out of 53,381**; remaining ground/installation surfaces retain material colors.
+- **1,606 source JPEGs** (23,604,861 bytes) become **five 2048 × 2048 atlases**, totaling 6,084,655 bytes. The UV/page stream is 2,664,204 bytes. Mesh, coordinates and photographs total **19,016,523 bytes** before HTTP compression, excluding the smaller navigation JSON.
+- GPU atlas allocation including mipmaps is **111,848,100 bytes (106.67MiB)**, within the 128MiB texture budget. This is GPU allocation, not download size; geometry, crowd and framebuffer resources are additional.
+- Removing the new `appearance` metadata from the map produces the same map as the prior geometry-only version. Geometry buffer hashes, navigation polygons, crossing layout and simulation behavior are unchanged.
+- An offline rebuild checked all 1,606 source-image hashes against the manifest and reproduced all ten output files byte-for-byte (geometry, UV, five atlases, manifest and map JSON).
+
+The production build was verified at `/fluxity/` in the native WebGPU browser. Photo and Solid both rendered; changing appearance while paused kept the same crowd and clock state. Street and perspective views showed correctly oriented wall photographs, signs and roof details. Switching to City Plaza hid the photo control; returning to Shibuya restored the photos successfully from cached source data. Native shader compilation and mip generation completed without warnings or errors.
+
+Tests also cover corrupted UV/atlas hashes, invalid UV/page assignments, triangle page consistency, atlas dimensions and allocation limits, every mip/layer, scene changes during decoding, partial decode failure, and bitmap/buffer/texture cleanup. Images are cached as compressed Blobs; closed ImageBitmaps are never reused. One environment draw call is retained.
+
+The photos are from the source dataset and may show older signs or construction. Resolution is deliberately reduced outside the crossing area. Photography already contains lighting and occlusion, so it is only lightly shaded in the renderer; this is not a uniformly lit photogrammetric model.
+
+The browser benchmark used the same device and settings as the earlier geometry comparison: **1920 × 1080 viewport / 1920 × 1006 canvas**, Balanced, Perspective, Photo, seed 42, Green held, 1× time, 1.35m/s walking speed and 1× avoidance. Each condition had 2 seconds of warmup and 4 seconds of sampling. No importer or test suite ran concurrently.
+
+| People | FPS | Frame interval (ms) | CPU simulation step (ms) | Draw calls |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 120.0 | 8.3 | 8.32 | 4 |
+| 5,000 | 120.0 | 8.3 | 37.92 | 4 |
+| 10,000 | 120.0 | 8.3 | 76.35 | 4 |
+| 20,000 | 120.0 | 8.3 | 147.10 | 4 |
+
+Rendering and simulation are independent. These short observations do not imply 30Hz simulation at large populations, a measured GPU execution time, or performance on other devices. A separate paused check at **00:21 / 448 crossing** retained both values through Solid → Photo.
+
+![PLATEAU photographic buildings](screenshots/plateau-photo.jpg)
+
+![Photographic street view](screenshots/plateau-photo-street.jpg)
+
+![Photographic population comparison](screenshots/plateau-photo-benchmark.jpg)
+
+---
+
+# Verification — initial PLATEAU geometry update, 2026-11-18
+
+The following measurements were made before photographic appearance was added.
 
 ## Automated checks
 
