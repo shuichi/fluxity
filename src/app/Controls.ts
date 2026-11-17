@@ -61,7 +61,12 @@ export class Controls {
         </a>
         <span class="brand-divider" aria-hidden="true"></span>
         <span class="header-tagline">People in motion.</span>
-        <div class="header-right"><span class="lab-label">REAL-TIME CROWD LAB</span><span class="runtime-status" id="runtime-status" data-kind="loading"><span class="status-dot"></span><span id="runtime-label">INITIALIZING</span></span><button class="icon-button mobile-controls" id="panel-toggle" aria-label="Toggle simulation controls" aria-controls="control-panel" aria-expanded="true">${icons.sliders}</button></div>
+        <div class="header-right">
+          <span class="lab-label">REAL-TIME CROWD LAB</span>
+          <a class="algorithms-link" href="${import.meta.env.BASE_URL}docs/algorithms.html" target="_blank" rel="noopener noreferrer" aria-label="アルゴリズム解説（新しいタブで開く）" title="アルゴリズム解説（新しいタブで開く）"><span class="algorithms-label">アルゴリズム解説</span><span class="algorithms-label-short">解説</span><span class="algorithms-link-arrow" aria-hidden="true">↗</span></a>
+          <span class="runtime-status" id="runtime-status" data-kind="loading"><span class="status-dot"></span><span id="runtime-label">INITIALIZING</span></span>
+          <button class="icon-button mobile-controls" id="panel-toggle" aria-label="Toggle simulation controls" aria-controls="control-panel" aria-expanded="true">${icons.sliders}</button>
+        </div>
       </header>
       <main class="workspace" aria-label="Interactive crowd simulation">
         <canvas id="scene" aria-label="Interactive three-dimensional crowd. Drag to orbit, right-drag to pan, scroll to zoom." tabindex="0"></canvas>

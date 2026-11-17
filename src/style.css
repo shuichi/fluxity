@@ -154,6 +154,31 @@ button:active:not(:disabled) {
   gap:24px;
 }
 
+.algorithms-link {
+  display:inline-flex;
+  align-items:center;
+  flex-shrink:0;
+  gap:6px;
+  min-height:34px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:5px;
+  color:var(--ink);
+  font-size:12px;
+  font-weight:600;
+  text-decoration:none;
+  white-space:nowrap;
+}
+
+.algorithms-link:hover {
+  background:#eff3e9;
+  border-color:#9aad93;
+}
+
+.algorithms-label-short {
+  display:none;
+}
+
 .lab-label,.eyebrow {
   font-size:10px;
   font-weight:700;
@@ -1739,6 +1764,16 @@ input[type=range]::-moz-range-thumb {
   }
   .header-right {
     gap:7px;
+  }
+  .algorithms-link {
+    padding:7px 5px;
+    font-size:11px;
+  }
+  .algorithms-label,.algorithms-link-arrow {
+    display:none;
+  }
+  .algorithms-label-short {
+    display:inline;
   }
   .mobile-controls {
     display:flex;
