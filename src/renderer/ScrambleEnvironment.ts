@@ -1,9 +1,9 @@
 import { MeshBuilder, TAU } from '../math/geometry';
 import type { Point2, Scenario } from '../types';
 
-// Alpha is a material ID, not opacity: 1 paving, 2 road paint, 3 illuminated signage,
+// Alpha is a material ID, not opacity: 1 legacy paving, 2 road paint, 3 illuminated signage, 4 mapped paving,
 // -1 red pedestrian lamp, -2 green pedestrian lamp. The whole scene stays one draw.
-export const SCENE_MATERIAL = { paving: 1, paint: 2, sign: 3, redSignal: -1, greenSignal: -2 } as const;
+export const SCENE_MATERIAL = { paving: 1, paint: 2, sign: 3, mappedPaving: 4, redSignal: -1, greenSignal: -2 } as const;
 
 const GLYPHS: Record<string, readonly number[]> = {
   A: [14,17,17,31,17,17,17], B: [30,17,17,30,17,17,30], C: [14,17,16,16,16,17,14],
@@ -26,6 +26,12 @@ export function createScrambleEnvironment(scenario: Scenario) {
   const scramble = scenario.scramble;
   if (!scramble) throw new Error('A scramble environment requires shared road geometry.');
   const mesh = new MeshBuilder(10);
+  // PLATEAU buildings, surfaces and clipped zebra paint are already in the static asset.
+  // Only the independently shaded signal fixtures are generated at runtime.
+  if (scenario.urbanMap) {
+    for (const signal of scramble.signalPositions) addSignal(signal);
+    return mesh.finish();
+  }
   const { minX, maxX, minZ, maxZ } = scenario.bounds;
   const width = maxX - minX, depth = maxZ - minZ;
   const centerX = (minX + maxX) / 2, centerZ = (minZ + maxZ) / 2;
@@ -146,9 +152,10 @@ export function createScrambleEnvironment(scenario: Scenario) {
     }
   }
 
-  function addSignal(position: Point2) {
-    const distance = Math.hypot(position.x, position.z) || 1;
-    const inward: Vec3 = [-position.x / distance,0,-position.z / distance];
+  function addSignal(position: Point2 & { direction?: Point2 }) {
+    const facing = position.direction ?? { x: -position.x, z: -position.z };
+    const distance = Math.hypot(facing.x, facing.z) || 1;
+    const inward: Vec3 = [facing.x / distance,0,facing.z / distance];
     const right: Vec3 = [inward[2],0,-inward[0]];
     const x = position.x, z = position.z;
     mesh.prism(x, 1.9, z, 0.18, 3.8, 0.18, [0.25,0.29,0.28,0], 6);

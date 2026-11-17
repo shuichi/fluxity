@@ -1,4 +1,64 @@
-# Verification — 2026-11-17
+# Verification — PLATEAU update, 2026-11-18
+
+## Automated checks
+
+- `npm test`: **76 tests passed across 12 files**.
+- `npm run build`: passed, including strict TypeScript checking.
+- Python conversion tests: **6 passed** with Python 3.9 and the pinned requirements.
+- Generated asset SHA-256 values match the map metadata. The scenery contains **440 buildings, all LOD2**, 222,017 vertices and 115,582 triangles. Vertex/index buffers total **10,267,664 bytes**; the navigation JSON is about 186 KB.
+
+New coverage includes real-map destination connectivity, valid sidewalk spawning for 20,000 people, 1,000 pedestrians staying on sidewalks through 120 red-signal steps and beginning crossings through 180 green steps, repeated five-zone arrivals, and bounded local avoidance work. Polygon tests include holes, concave boundaries, swept movement, tangential sliding and crossing exits during red. A Float32 regression checks that storage rounding cannot turn a curb-side waiter into a crosser or freeze sliding along the boundary. Loader tests cover base-relative URLs, byte counts, normals, indices, SHA-256 mismatch/retry and stale asynchronous scenario loads.
+
+The converter checks coordinate axes and scale, concave/holed faces, vertical walls, LOD2 references and surface orientation. It omits 105 submillimetric degenerate triangles after Float32 conversion; maximum original-face planarity deviation is 0.029164m. Source XML, calibrated layout and output hashes are recorded in the data manifest.
+
+## Browser verification and benchmark
+
+The production build was served at `http://127.0.0.1:4173/fluxity/`, matching a GitHub Pages subpath. The native WebGPU canvas, Worker and binary data loaded successfully. The final browser error/warning log was empty.
+
+- Manual Red after reset: at 22 simulated seconds the UI showed **424 waiting / 0 crossing**.
+- Changing to Green without reset released the waiting flows; street view later showed **463 crossing**.
+- Perspective, overhead and street views rendered the LOD2 buildings, flat road surfaces, five painted crossing corridors and signal fixtures. No overlapping road/paint flicker was visible after the ground mesh was divided into disjoint faces.
+- City Plaza loaded with the map credits and signal controls hidden; returning to Shibuya restored the real scenery and signal controls. The final state was restored to **1,000 people / Auto / Perspective**.
+
+The browser comparison used macOS arm64, the Codex in-app desktop browser, seed 42, Green held, Perspective, Balanced, time scale 1×, walking speed 1.35m/s and avoidance 1×. The CSS viewport was **1920 × 1080**, with an actual **1920 × 1006 canvas** below the header. Each population had a 2-second warmup and 4-second sample. GPU execution time was not measured.
+
+| People | FPS | Frame interval (ms) | CPU simulation step (ms) | Draw calls |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 120.0 | 8.3 | 8.80 | 4 |
+| 5,000 | 120.0 | 8.3 | 36.99 | 4 |
+| 10,000 | 120.0 | 8.3 | 73.80 | 4 |
+| 20,000 | 120.0 | 8.3 | 141.55 | 4 |
+
+The renderer interpolates independently of the simulation. High FPS therefore does **not** mean the CPU maintained 30 simulation steps per wall-clock second. This is a short measurement on one device and view, including frustum culling and crowd LOD.
+
+![PLATEAU Shibuya with automatic signals](screenshots/plateau-shibuya.jpg)
+
+![Red signal holding new arrivals](screenshots/plateau-red.jpg)
+
+![Street view of the real crossing geometry](screenshots/plateau-street.jpg)
+
+![PLATEAU population comparison](screenshots/plateau-benchmark.jpg)
+
+## CPU benchmark
+
+`npm run benchmark:shibuya`, Node v26.13.1 / darwin arm64, seed 42, Green held, 30 warmup steps plus 60 measured steps. Browser simulation was paused, and no test suite ran concurrently. Rendering, Worker scheduling and transfer are excluded.
+
+| People | Mean step (ms) | p95 step (ms) | Snapshot packing (ms) |
+| ---: | ---: | ---: | ---: |
+| 1,000 | 6.90 | 7.18 | 0.38 |
+| 5,000 | 39.68 | 40.62 | 0.27 |
+
+The 5,000-person workload exceeds the 33.33ms budget for 30Hz simulation on this machine. The default is therefore 1,000 people; larger populations remain available for experimentation.
+
+## Scope and limits
+
+The visible scenery covers approximately 500m square; walking is limited to 250m square. Ground is flattened, buildings are untextured, and crossing/plaza corrections are calibrated overlays. The FY2025 source includes older geometry and attributes; it is not a current construction survey. Traffic timing remains the demo's 12-second red / 35-second green cycle. Numeric and short browser tests do not establish unlimited-duration clearance under heavy congestion, physical non-overlap of people, or performance on other hardware.
+
+---
+
+# Historical verification — 2026-11-17, before PLATEAU
+
+The following records describe the earlier procedural scenes and are retained for comparison. Their Shibuya geometry and performance are not measurements of the PLATEAU update.
 
 ## Automated checks
 

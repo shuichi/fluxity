@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ControlCallbacks } from '../app/Controls';
 import type { SimulationConfig, SnapshotMessage, WorkerInput, WorkerOutput } from '../types';
-import { SNAPSHOT_STRIDE } from '../types';
+import { DEFAULT_CONFIG, SNAPSHOT_STRIDE } from '../types';
 
 const harness = vi.hoisted(() => ({
   callbacks: null as ControlCallbacks | null,
@@ -90,6 +90,7 @@ describe('application / worker integration', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    harness.renderer.setScenario.mockReset();
     vi.useFakeTimers({ toFake: ['performance'] });
     documentStub = Object.assign(new EventTarget(), { hidden: false });
     scheduledFrame = null; nextFrameId = 0;
@@ -113,7 +114,7 @@ describe('application / worker integration', () => {
     expect(worker.latestInit().paused).toBe(false);
     worker.emit(worker.snapshot());
     controls().onPause();
-    expect(worker.latestInit().config.count).toBe(5000);
+    expect(worker.latestInit().config.count).toBe(DEFAULT_CONFIG.count);
     expect(worker.latestInit().paused).toBe(true);
     expect(worker.messages.at(-1)).toEqual({ type: 'pause', paused: true });
     expect(harness.controls.setPaused).toHaveBeenLastCalledWith(true);
@@ -192,7 +193,7 @@ describe('application / worker integration', () => {
     worker.emit(worker.snapshot());
     documentStub.hidden = true;
     documentStub.dispatchEvent(new Event('visibilitychange'));
-    expect(worker.latestInit().config.count).toBe(5000);
+    expect(worker.latestInit().config.count).toBe(DEFAULT_CONFIG.count);
     expect(worker.latestInit().paused).toBe(true);
     expect(worker.messages.at(-1)).toEqual({ type: 'pause', paused: true });
     expect(harness.controls.setBenchmarkRunning).toHaveBeenLastCalledWith(false);
@@ -205,5 +206,56 @@ describe('application / worker integration', () => {
     documentStub.hidden = false;
     documentStub.dispatchEvent(new Event('visibilitychange'));
     expect(worker.messages.at(-1)).toEqual({ type: 'pause', paused: true });
+  });
+
+  it('waits for scenery and applies the latest population and pause settings after loading', async () => {
+    const worker = FakeWorker.instance;
+    const previous = worker.latestInit();
+    let ready!: () => void;
+    harness.renderer.setScenario.mockReturnValueOnce(new Promise<void>(resolve => { ready = resolve; }));
+    controls().onConfig({ scenario: 'plaza' }, true);
+    expect(worker.latestInit()).toBe(previous);
+    expect(worker.messages.at(-1)).toEqual({ type: 'pause', paused: true });
+    controls().onConfig({ count: 5000 }, true);
+    controls().onPause();
+    expect(worker.latestInit()).toBe(previous);
+    ready();
+    await Promise.resolve();
+    expect(worker.latestInit().config).toMatchObject({ scenario: 'plaza', count: 5000 });
+    expect(worker.latestInit().paused).toBe(true);
+    expect(harness.controls.showError).not.toHaveBeenCalled();
+  });
+
+  it('ignores failure from a scenery request superseded by a later scenario', async () => {
+    const worker = FakeWorker.instance;
+    const previous = worker.latestInit();
+    let reject!: (error: Error) => void;
+    harness.renderer.setScenario.mockReturnValueOnce(new Promise<void>((_resolve, fail) => { reject = fail; }));
+    controls().onConfig({ scenario: 'plaza' }, true);
+    controls().onConfig({ scenario: 'corridor' }, true);
+    const newest = worker.latestInit();
+    expect(newest.config.scenario).toBe('corridor');
+    worker.emit(worker.snapshot(1, 2, previous));
+    reject(new Error('Old asset request failed'));
+    await Promise.resolve(); await Promise.resolve();
+    expect(worker.latestInit()).toBe(newest);
+    expect(harness.controls.showError).not.toHaveBeenCalled();
+    expect(worker.terminate).not.toHaveBeenCalled();
+  });
+
+  it('does not revive the worker or UI when destroyed during an asset request', async () => {
+    const worker = FakeWorker.instance;
+    const previous = worker.latestInit();
+    let ready!: () => void;
+    harness.renderer.setScenario.mockReturnValueOnce(new Promise<void>(resolve => { ready = resolve; }));
+    controls().onConfig({ scenario: 'plaza' }, true);
+    app.destroy();
+    const statusCalls = harness.controls.setStatus.mock.calls.length;
+    ready();
+    await Promise.resolve();
+    expect(worker.latestInit()).toBe(previous);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(harness.controls.setStatus).toHaveBeenCalledTimes(statusCalls);
+    expect(harness.controls.showError).not.toHaveBeenCalled();
   });
 });

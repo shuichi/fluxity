@@ -4,10 +4,11 @@ import { createScrambleEnvironment } from './ScrambleEnvironment';
 
 export const ENVIRONMENT_VERTEX_STRIDE = 40;
 
-/** All scenery is generated locally and merged into a single static draw. */
+/** Procedural scenery or fixtures to merge with a preconverted urban mesh. */
 export function createEnvironment(scenario: Scenario) {
   if (scenario.scramble) return createScrambleEnvironment(scenario);
   const mesh = new MeshBuilder(10);
+  if (scenario.urbanMap) return mesh.finish();
   const { minX, maxX, minZ, maxZ } = scenario.bounds;
   const width = maxX - minX, depth = maxZ - minZ;
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;

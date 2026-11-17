@@ -40,6 +40,8 @@ export class App {
   private worker: Worker | null = null;
   private readonly timeline: SnapshotTimeline;
   private generation = 0;
+  private scenarioRequest = 0;
+  private sceneReady = false;
   private paused = false;
   private quality: Quality = 'balanced';
   private debug = false;
@@ -98,14 +100,12 @@ export class App {
     try {
       this.controls.setStatus('Connecting to your GPU', 'loading');
       this.renderer = await WebGPURenderer.create(this.controls.canvas, message => this.fail(message));
-      if (this.destroyed) { this.renderer.destroy(); return; }
-      this.renderer.setScenario(getScenario(this.config.scenario));
+      if (this.destroyed || this.failed) { this.renderer.destroy(); this.renderer = null; return; }
       this.worker = new Worker(new URL('../simulation/SimulationWorker.ts', import.meta.url), { type: 'module' });
       this.worker.onmessage = (event: MessageEvent<WorkerOutput>) => this.onWorkerMessage(event.data);
       this.worker.onerror = event => this.fail(`Simulation worker: ${event.message || 'could not start'}`);
-      this.controls.setStatus('Preparing the crowd', 'loading');
-      this.resetSimulation();
       this.frameId = requestAnimationFrame(this.frame);
+      await this.prepareScenario();
     } catch (error) {
       this.fail(error instanceof Error ? error.message : String(error));
     }
@@ -117,7 +117,7 @@ export class App {
 
   private configure(patch: Partial<SimulationConfig>, reset: boolean): void {
     const next = { ...this.config, ...patch };
-    next.count = Math.round(clamp(Number.isFinite(next.count) ? next.count : 5000, 1, MAX_AGENTS));
+    next.count = Math.round(clamp(Number.isFinite(next.count) ? next.count : DEFAULT_CONFIG.count, 1, MAX_AGENTS));
     next.seed = Number.isFinite(next.seed) ? next.seed >>> 0 : 42;
     next.simulationSpeed = clamp(next.simulationSpeed, 0.25, 3);
     next.walkingSpeed = clamp(next.walkingSpeed, 0.3, 3);
@@ -126,7 +126,10 @@ export class App {
     const requiresReset = reset || scenarioChanged || next.count !== this.config.count || next.seed !== this.config.seed;
     this.config = next;
     this.controls.setConfig(this.config);
-    if (scenarioChanged) this.renderer?.setScenario(getScenario(next.scenario));
+    if (scenarioChanged && this.renderer) {
+      void this.prepareScenario();
+      return;
+    }
     if (requiresReset) this.resetSimulation();
     else this.send({ type: 'settings', settings: {
       simulationSpeed: next.simulationSpeed,
@@ -136,8 +139,34 @@ export class App {
     } });
   }
 
+  /** An old map request must never initialize a crowd on a newer map. */
+  private prepareScenario(): void | Promise<void> {
+    if (!this.renderer || this.failed || this.destroyed) return;
+    const request = ++this.scenarioRequest;
+    this.sceneReady = false;
+    this.timeline.clear();
+    this.generation++;
+    this.sendPauseState();
+    const scenario = getScenario(this.config.scenario);
+    this.controls.setStatus(scenario.urbanMap ? 'Loading PLATEAU scenery' : 'Preparing the scene', 'loading');
+    const complete = (): void => {
+      if (request !== this.scenarioRequest || this.destroyed || this.failed) return;
+      this.sceneReady = true;
+      this.resetSimulation();
+    };
+    const failed = (error: unknown): void => {
+      if (request !== this.scenarioRequest || this.destroyed) return;
+      this.fail(error instanceof Error ? error.message : String(error));
+    };
+    try {
+      const loading = this.renderer.setScenario(scenario);
+      if (loading) return loading.then(complete).catch(failed);
+      complete();
+    } catch (error) { failed(error); }
+  }
+
   private resetSimulation(): void {
-    if (!this.worker || this.failed) return;
+    if (!this.worker || this.failed || !this.sceneReady) return;
     this.timeline.clear();
     this.generation++;
     this.stats.count = this.config.count;
@@ -261,7 +290,7 @@ export class App {
   }
 
   private sendPauseState(): void {
-    this.send({ type: 'pause', paused: this.paused || document.hidden });
+    this.send({ type: 'pause', paused: this.paused || document.hidden || !this.sceneReady });
   }
 
   private readonly onVisibility = (): void => {
@@ -278,11 +307,15 @@ export class App {
     cancelAnimationFrame(this.frameId);
     this.worker?.terminate();
     this.worker = null;
+    this.renderer?.destroy();
+    this.renderer = null;
     this.controls.showError(message);
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
+    this.scenarioRequest++;
     cancelAnimationFrame(this.frameId);
     this.worker?.terminate();
     this.worker = null;

@@ -1,33 +1,24 @@
 import type { Scenario } from '../types';
+import map from './data/shibuya-map.json';
+import layout from '../../data/shibuya/layout.json';
 
-/** Shibuya-inspired layout, not a survey or a scale reconstruction of the real intersection. */
+/** PLATEAU FY2025 buildings/roads, with documented ground-level demo overlays. */
 export const shibuya: Scenario = {
-  id: 'shibuya', name: 'Shibuya Scramble',
-  description: 'Four corners gather, then cross together on the pedestrian signal.',
-  bounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
-  obstacles: [
-    { x: -77, z: -77, width: 36, depth: 36, height: 42, kind: 'building' },
-    { x: 77, z: -77, width: 36, depth: 36, height: 34, kind: 'building' },
-    { x: -77, z: 77, width: 36, depth: 36, height: 26, kind: 'building' },
-    { x: 77, z: 77, width: 36, depth: 36, height: 10, kind: 'building' },
-  ],
-  spawnZones: [
-    { x: -57, z: -57, width: 74, depth: 74 },
-    { x: 57, z: -57, width: 74, depth: 74 },
-    { x: -57, z: 57, width: 74, depth: 74 },
-    { x: 57, z: 57, width: 74, depth: 74 },
-  ],
-  targets: [{ x: -52, z: -52 }, { x: 52, z: -52 }, { x: -52, z: 52 }, { x: 52, z: 52 }],
-  spawnTargets: [3, 2, 1, 0],
+  id: 'shibuya',
+  name: 'Shibuya Scramble',
+  description: 'PLATEAU city geometry with signal-controlled pedestrian flow.',
+  bounds: layout.bounds,
+  obstacles: [], // Polygon obstacles are already removed from the shared urban walkable surfaces.
+  spawnZones: layout.spawnZones,
+  targets: layout.targets,
+  spawnTargets: layout.spawnTargets,
+  targetTransitions: layout.targetTransitions,
+  targetSpread: layout.targetSpread,
+  navigationCellSize: 0.75,
+  urbanMap: map,
   scramble: {
-    roadHalfWidth: 18,
-    crosswalks: [
-      { from: { x: -27, z: -27 }, to: { x: -27, z: 27 }, width: 10 },
-      { from: { x: 27, z: -27 }, to: { x: 27, z: 27 }, width: 10 },
-      { from: { x: -27, z: -27 }, to: { x: 27, z: -27 }, width: 10 },
-      { from: { x: -27, z: 27 }, to: { x: 27, z: 27 }, width: 10 },
-      { from: { x: -27, z: 27 }, to: { x: 27, z: -27 }, width: 10 },
-    ],
-    signalPositions: [{ x: -23, z: -23 }, { x: 23, z: -23 }, { x: -23, z: 23 }, { x: 23, z: 23 }],
+    roadHalfWidth: 0,
+    crosswalks: layout.crosswalks,
+    signalPositions: layout.signalPositions,
   },
 };

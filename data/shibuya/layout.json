@@ -1,0 +1,254 @@
+{
+  "description": "Ground-level Shibuya Scramble demo overlays, hand calibrated against PLATEAU roads and GSI seamless aerial imagery. Coordinates are approximate local meters, not surveyed markings or live traffic information.",
+  "origin": {
+    "latitude": 35.6595,
+    "longitude": 139.7005
+  },
+  "bounds": {
+    "minX": -125,
+    "maxX": 125,
+    "minZ": -125,
+    "maxZ": 125
+  },
+  "calibrationSources": [
+    "https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto",
+    "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/18/232798/103245.jpg",
+    "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/18/232798/103246.jpg",
+    "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/18/232799/103245.jpg",
+    "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/18/232799/103246.jpg"
+  ],
+  "crosswalks": [
+    {
+      "from": {
+        "x": -27,
+        "z": -16
+      },
+      "to": {
+        "x": -28,
+        "z": 11
+      },
+      "width": 6.5
+    },
+    {
+      "from": {
+        "x": -25,
+        "z": 16
+      },
+      "to": {
+        "x": 17,
+        "z": 21
+      },
+      "width": 7.5
+    },
+    {
+      "from": {
+        "x": 24,
+        "z": -6
+      },
+      "to": {
+        "x": 22,
+        "z": 19
+      },
+      "width": 7.5
+    },
+    {
+      "from": {
+        "x": -3,
+        "z": -20
+      },
+      "to": {
+        "x": 24,
+        "z": -16
+      },
+      "width": 10
+    },
+    {
+      "from": {
+        "x": -8,
+        "z": -18
+      },
+      "to": {
+        "x": 17,
+        "z": 19
+      },
+      "width": 11
+    }
+  ],
+  "signalPositions": [
+    {
+      "x": -33,
+      "z": -13,
+      "direction": {
+        "x": 0.03,
+        "z": 1
+      }
+    },
+    {
+      "x": -7,
+      "z": -23,
+      "direction": {
+        "x": 0.56,
+        "z": 0.83
+      }
+    },
+    {
+      "x": 28,
+      "z": -7,
+      "direction": {
+        "x": -0.7,
+        "z": 0.7
+      }
+    },
+    {
+      "x": 19,
+      "z": 23,
+      "direction": {
+        "x": -0.56,
+        "z": -0.83
+      }
+    },
+    {
+      "x": -28,
+      "z": 20,
+      "direction": {
+        "x": 0.8,
+        "z": -0.6
+      }
+    }
+  ],
+  "pedestrianAreas": [
+    {
+      "rings": [
+        [
+          {
+            "x": 16,
+            "z": 17
+          },
+          {
+            "x": 55,
+            "z": 20
+          },
+          {
+            "x": 56,
+            "z": 55
+          },
+          {
+            "x": 10,
+            "z": 57
+          },
+          {
+            "x": 13,
+            "z": 35
+          }
+        ]
+      ]
+    }
+  ],
+  "blockedAreas": [
+    {
+      "rings": [
+        [
+          {
+            "x": 25,
+            "z": 23
+          },
+          {
+            "x": 30,
+            "z": 22
+          },
+          {
+            "x": 33,
+            "z": 25
+          },
+          {
+            "x": 32,
+            "z": 29
+          },
+          {
+            "x": 27,
+            "z": 30
+          },
+          {
+            "x": 24,
+            "z": 27
+          }
+        ]
+      ]
+    }
+  ],
+  "spawnZones": [
+    {
+      "x": -44,
+      "z": -38,
+      "width": 35,
+      "depth": 28
+    },
+    {
+      "x": 8,
+      "z": -63,
+      "width": 22,
+      "depth": 65
+    },
+    {
+      "x": 46,
+      "z": -5,
+      "width": 30,
+      "depth": 10
+    },
+    {
+      "x": 32,
+      "z": 41,
+      "width": 35,
+      "depth": 24
+    },
+    {
+      "x": -33,
+      "z": 32,
+      "width": 30,
+      "depth": 37
+    }
+  ],
+  "targets": [
+    {
+      "x": -33,
+      "z": -23
+    },
+    {
+      "x": 7,
+      "z": -45
+    },
+    {
+      "x": 44,
+      "z": -5
+    },
+    {
+      "x": 20,
+      "z": 42
+    },
+    {
+      "x": -35,
+      "z": 38
+    }
+  ],
+  "spawnTargets": [
+    3,
+    3,
+    4,
+    1,
+    2
+  ],
+  "targetTransitions": [
+    3,
+    4,
+    0,
+    1,
+    2
+  ],
+  "targetSpread": 3,
+  "notes": [
+    "Crosswalk rectangles extend into sidewalks to make continuous walkable surfaces; zebra paint is clipped to the carriageway.",
+    "Hachiko forecourt pedestrian area and a small planting exclusion are conservative manual overlays; PLATEAU building footprints take precedence.",
+    "Ground is flattened. Station interiors, decks, stairs and underground passages are excluded.",
+    "Signal positions/orientations and timing are demonstration settings, not surveyed signal installations."
+  ]
+}

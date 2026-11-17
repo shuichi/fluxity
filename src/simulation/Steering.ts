@@ -1,3 +1,4 @@
+import type { UrbanGeometry } from './UrbanGeometry';
 import type { Scenario, SimulationSettings } from '../types';
 import type { AgentData } from './AgentData';
 import type { Direction } from './Navigation';
@@ -12,7 +13,8 @@ export interface LocalAvoidance {
 
 export class Steering implements LocalAvoidance {
   candidateChecks = 0;
-  constructor(private readonly scenario: Scenario) {}
+  private readonly wallPush = { x: 0, z: 0 };
+  constructor(private readonly scenario: Scenario, private readonly urban?: UrbanGeometry) {}
   compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity): void {
     const state = agents.current;
     const x = state.x[id], z = state.z[id], dirX = direction.x, dirZ = direction.z;
@@ -84,6 +86,10 @@ export class Steering implements LocalAvoidance {
     // A persistent gentle lateral drift helps congested pedestrians escape symmetric locks.
     if (agents.stalledTime[id] > 2 && preferredSpeed > 0) {
       desiredX += dirZ * 0.3; desiredZ -= dirX * 0.3;
+    }
+    if (this.urban) {
+      this.urban.avoidance(x, z, agents.radius[id], this.wallPush);
+      desiredX += this.wallPush.x; desiredZ += this.wallPush.z;
     }
     for (const obstacle of this.scenario.obstacles) {
       const halfX = obstacle.width * 0.5, halfZ = obstacle.depth * 0.5;

@@ -40,15 +40,15 @@ export class Simulation {
 
   get signal(): SignalState | undefined { return this.traffic?.state; }
 
-  constructor(config: SimulationConfig, avoidance?: LocalAvoidance) {
+  constructor(config: SimulationConfig, avoidance?: LocalAvoidance, scenario?: Scenario) {
     const count = Math.floor(finite(config.count, DEFAULT_CONFIG.count, 1, MAX_AGENTS));
-    this.agents = new AgentData(count); this.scenario = getScenario(config.scenario);
+    this.agents = new AgentData(count); this.scenario = scenario ?? getScenario(config.scenario);
     this.random = new Random(config.seed); this.navigation = new Navigation(this.scenario);
     this.grid = new SpatialGrid(this.scenario.bounds, count);
     this.settings = { simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto' };
-    this.traffic = this.scenario.scramble ? new TrafficSignal() : undefined;
+    this.traffic = this.navigation.scramble ? new TrafficSignal() : undefined;
     this.updateSettings(config);
-    this.avoidance = avoidance ?? new Steering(this.scenario);
+    this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban);
     this.initialize();
   }
   updateSettings(settings: Partial<SimulationSettings>): void {
@@ -65,6 +65,11 @@ export class Simulation {
     const a = this.agents, state = a.current, b = this.scenario.bounds;
     const heads = new Int32Array(this.grid.counts.length); heads.fill(-1);
     const next = new Int32Array(a.count); next.fill(-1);
+    const cellsByZone = this.scenario.spawnZones.map(zone => this.navigation.spawnCells.filter(cell => {
+      const x = b.minX + (cell % this.navigation.columns + 0.5) * this.navigation.cellSize;
+      const z = b.minZ + (Math.floor(cell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
+      return Math.abs(x - zone.x) <= zone.width / 2 && Math.abs(z - zone.z) <= zone.depth / 2;
+    }));
     for (let i = 0; i < a.count; i++) {
       a.id[i] = i; a.scale[i] = this.random.range(0.89, 1.13);
       a.radius[i] = a.scale[i] * 0.25; a.speedFactor[i] = this.random.range(0.8, 1.2);
@@ -79,7 +84,7 @@ export class Simulation {
         x = this.random.range(zone.x - zone.width * 0.5, zone.x + zone.width * 0.5);
         z = this.random.range(zone.z - zone.depth * 0.5, zone.z + zone.depth * 0.5);
         x = Math.max(b.minX + 1, Math.min(b.maxX - 1, x)); z = Math.max(b.minZ + 1, Math.min(b.maxZ - 1, z));
-        if (!this.navigation.isFree(x, z, 0.7)) continue;
+        if (!this.navigation.isSpawnable(x, z, 0.7)) continue;
         cell = this.grid.cellAt(x, z);
         let close = false;
         const cx = cell % this.grid.columns, cz = Math.floor(cell / this.grid.columns);
@@ -94,14 +99,10 @@ export class Simulation {
         }
         if (!close || attempt > 90) break;
       }
-      // Even if every random sample hits a building, never accept an invalid final sample.
-      if (!this.navigation.isFree(x, z, a.radius[i] + 0.01)) {
-        let freeCell = this.random.int(this.navigation.walkable.length);
-        while (!this.navigation.walkable[freeCell] || (this.navigation.scramble && !this.navigation.scramble.isSidewalk(
-          b.minX + ((freeCell % this.navigation.columns) + 0.5) * this.navigation.cellSize,
-          b.minZ + (Math.floor(freeCell / this.navigation.columns) + 0.5) * this.navigation.cellSize, 0.7))) {
-          freeCell = (freeCell + 1) % this.navigation.walkable.length;
-        }
+      // A prevalidated finite list avoids unbounded searches on maps with empty courtyards.
+      if (!this.navigation.isSpawnable(x, z, a.radius[i] + 0.02)) {
+        const candidates = cellsByZone[zoneIndex].length ? cellsByZone[zoneIndex] : this.navigation.spawnCells;
+        const freeCell = candidates[this.random.int(candidates.length)];
         x = b.minX + ((freeCell % this.navigation.columns) + 0.5) * this.navigation.cellSize;
         z = b.minZ + (Math.floor(freeCell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
         cell = this.grid.cellAt(x, z);
@@ -109,7 +110,7 @@ export class Simulation {
       state.x[i] = x; state.z[i] = z; next[i] = heads[cell]; heads[cell] = i;
       const target = this.scenario.spawnTargets?.[zoneIndex] ?? this.random.int(this.scenario.targets.length);
       this.assignTarget(i, target);
-      this.navigation.direction(x, z, a.targetId[i], a.targetX[i], a.targetZ[i], this.direction);
+      this.navigation.direction(x, z, a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, a.radius[i] + 0.015);
       state.heading[i] = Math.atan2(this.direction.x, this.direction.z);
       state.vx[i] = this.direction.x * a.preferredSpeed[i] * 0.7;
       state.vz[i] = this.direction.z * a.preferredSpeed[i] * 0.7;
@@ -123,19 +124,24 @@ export class Simulation {
     let x = target.x, z = target.z;
     // Spread arrivals across an edge instead of collapsing every flow into a point.
     for (let attempt = 0; attempt < 8; attempt++) {
-      const spread = this.scenario.id === 'plaza' ? 7 : 22;
+      const spread = this.scenario.targetSpread ?? (this.scenario.id === 'plaza' ? 7 : 22);
       const alongX = Math.abs(target.z) > Math.abs(target.x);
-      x = target.x + (alongX ? this.random.range(-spread, spread) : this.random.range(-2, 2));
-      z = target.z + (alongX ? this.random.range(-2, 2) : this.random.range(-spread, spread));
+      x = target.x + (this.navigation.urban || alongX ? this.random.range(-spread, spread) : this.random.range(-2, 2));
+      z = target.z + (this.navigation.urban || !alongX ? this.random.range(-spread, spread) : this.random.range(-2, 2));
       x = Math.max(b.minX + 2, Math.min(b.maxX - 2, x)); z = Math.max(b.minZ + 2, Math.min(b.maxZ - 2, z));
-      if (this.navigation.isFree(x, z, 1)) break;
+      if (this.navigation.isFree(x, z, 1) && (!this.navigation.urban || this.navigation.isReachable(x, z, targetId))) break;
       x = target.x; z = target.z;
+    }
+    if (this.navigation.urban && (!this.navigation.isFree(x, z, this.navigation.clearance) || !this.navigation.isReachable(x, z, targetId))) {
+      const goal = this.navigation.goals[targetId]; x = goal.x; z = goal.z;
     }
     a.targetX[id] = x; a.targetZ[id] = z;
   }
   private nextTarget(id: number): void {
     const previous = this.agents.targetId[id];
-    if (this.scenario.id === 'shibuya') {
+    if (this.scenario.targetTransitions) {
+      this.assignTarget(id, this.scenario.targetTransitions[previous] ?? previous);
+    } else if (this.scenario.id === 'shibuya') {
       this.assignTarget(id, previous ^ 3);
     } else if (this.scenario.id === 'corridor' || this.scenario.id === 'bottleneck' || this.scenario.id === 'crossing') {
       this.assignTarget(id, previous ^ 1);
@@ -157,22 +163,15 @@ export class Simulation {
     let totalSpeed = 0, stopped = 0, waiting = 0, crossing = 0;
     const b = this.scenario.bounds;
     for (let i = 0; i < a.count; i++) {
+      // Use one clearance for classification, routing and integration. A person who
+      // has only partly cleared the exit curb must keep moving onto the sidewalk.
+      const radius = a.radius[i] + 0.015;
       const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];
       if (tx * tx + tz * tz < 10) this.nextTarget(i);
-      this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction);
+      this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius);
       // Existing crossers always clear the road. Only curb-side entry is gated by red.
-      const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], a.radius[i]);
-      if (scramble && sidewalkOnly) {
-        const curbDistance = scramble.distanceToCurb(read.x[i], read.z[i], this.direction.x, this.direction.z, a.radius[i]);
-        if (curbDistance < 3) {
-          waiting++;
-          const curb = scramble.halfWidth + a.radius[i] + 0.08;
-          // Brake the desired direction BEFORE avoidance. Waiting pedestrians can
-          // still yield outward/laterally to people clearing the opposite way.
-          if (read.x[i] * this.direction.x < 0) this.direction.x *= Math.max(0, Math.min(1, (Math.abs(read.x[i]) - curb) / 2.2));
-          if (read.z[i] * this.direction.z < 0) this.direction.z *= Math.max(0, Math.min(1, (Math.abs(read.z[i]) - curb) / 2.2));
-        }
-      }
+      const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
+      if (scramble && sidewalkOnly && scramble.brakeAtCurb(read.x[i], read.z[i], this.direction, radius)) waiting++;
       a.preferredVX[i] = this.direction.x * a.preferredSpeed[i]; a.preferredVZ[i] = this.direction.z * a.preferredSpeed[i];
       this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity);
       let ax = (this.velocity.x - read.vx[i]) / 0.3, az = (this.velocity.z - read.vz[i]) / 0.3;
@@ -183,7 +182,6 @@ export class Simulation {
       // Smoothly decelerate on a lower UI speed limit, without a one-frame velocity jump.
       const speedLimit = Math.max(maxSpeed, Math.hypot(read.vx[i], read.vz[i]) - 3.8 * dt);
       if (velocityLength > speedLimit && velocityLength > 0) { vx *= speedLimit / velocityLength; vz *= speedLimit / velocityLength; }
-      const radius = a.radius[i] + 0.015;
       let x = read.x[i] + vx * dt, z = read.z[i] + vz * dt;
       x = Math.max(b.minX + radius, Math.min(b.maxX - radius, x));
       z = Math.max(b.minZ + radius, Math.min(b.maxZ - radius, z));
@@ -202,7 +200,7 @@ export class Simulation {
       if (scramble) {
         scramble.constrain(read.x[i], read.z[i], x, z, radius, sidewalkOnly, this.projected);
         x = this.projected.x; z = this.projected.z;
-        if (!scramble.isSidewalk(x, z, a.radius[i])) crossing++;
+        if (!scramble.isSidewalk(x, z, radius)) crossing++;
       }
       vx = (x - read.x[i]) / dt; vz = (z - read.z[i]) / dt;
       const speed = Math.hypot(vx, vz);

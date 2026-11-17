@@ -14,6 +14,9 @@ export class Camera {
   elevation = 0.73;
   private extent = 180;
   private scramble = false;
+  private urban = false;
+  private centerX = 0;
+  private centerZ = 0;
   private drag: { x: number; y: number; pan: boolean } | null = null;
   private readonly events = new AbortController();
 
@@ -46,29 +49,35 @@ export class Camera {
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), { signal });
   }
 
-  setBounds(bounds: Bounds, scramble = false): void {
+  setBounds(bounds: Bounds, scramble = false, urban = false): void {
     this.scramble = scramble;
+    this.urban = urban;
     this.extent = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
-    this.target[0] = (bounds.minX + bounds.maxX) / 2;
-    this.target[2] = (bounds.minZ + bounds.maxZ) / 2;
+    this.centerX = (bounds.minX + bounds.maxX) / 2;
+    this.centerZ = (bounds.minZ + bounds.maxZ) / 2;
     this.reset();
   }
 
   reset(): void { this.setView('perspective'); }
 
   setView(view: CameraView): void {
-    this.target[0] = 0; this.target[1] = 0; this.target[2] = 0;
+    this.target[0] = this.centerX; this.target[1] = 0; this.target[2] = this.centerZ;
     if (view === 'overview') {
       this.yaw = 0; this.elevation = 1.53; this.distance = this.extent * 1.35;
     } else if (view === 'street') {
       this.yaw = 0.58; this.elevation = 0.085; this.distance = 22;
-      this.target[0] = -this.extent * 0.12;
-      this.target[2] = this.extent * 0.13;
+      this.target[0] += -this.extent * 0.12;
+      this.target[2] += this.extent * 0.13;
       this.target[1] = 1.15;
+      if (this.urban) {
+        this.target[0] = this.centerX - 4;
+        this.target[2] = this.centerZ + 7;
+        this.yaw = -1.0; this.distance = 24; this.elevation = 0.055;
+      }
     } else {
-      this.yaw = this.scramble ? 0.52 : 0.62;
-      this.elevation = this.scramble ? 0.84 : 0.73;
-      this.distance = this.extent * (this.scramble ? 0.82 : 1.02);
+      this.yaw = this.urban ? -0.55 : this.scramble ? 0.52 : 0.62;
+      this.elevation = this.urban ? 1.05 : this.scramble ? 0.84 : 0.73;
+      this.distance = this.extent * (this.urban ? 0.85 : this.scramble ? 0.82 : 1.02);
     }
   }
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, FIXED_DT, SNAPSHOT_STRIDE } from '../types';
-import { getScenario } from '../scenarios';
+import { syntheticShibuya } from './fixtures/synthetic-shibuya';
 import { Navigation } from '../simulation/Navigation';
 import { Simulation } from '../simulation/Simulation';
 import { SIGNAL_GREEN_SECONDS, SIGNAL_RED_SECONDS, TrafficSignal } from '../simulation/TrafficSignal';
 
 function pedestrian(mode: 'red' | 'green', z = -19): Simulation {
-  const simulation = new Simulation({ ...DEFAULT_CONFIG, scenario: 'shibuya', count: 1, signalMode: mode });
+  const simulation = new Simulation({ ...DEFAULT_CONFIG, scenario: 'shibuya', count: 1, signalMode: mode }, undefined, syntheticShibuya);
   const a = simulation.agents;
   a.current.x[0] = -27; a.current.z[0] = z;
   a.current.vx[0] = 0; a.current.vz[0] = 1.35;
@@ -51,7 +51,7 @@ describe('scramble pedestrian signal', () => {
     expect(simulation.signal?.crossing).toBe(0);
   });
   it('lets a waiting pedestrian yield while another pedestrian clears the curb', () => {
-    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 2, signalMode: 'red' });
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 2, signalMode: 'red' }, undefined, syntheticShibuya);
     const a = simulation.agents;
     a.current.x.fill(-27); a.current.z.set([17.6, 18.5]);
     a.current.vx.fill(0); a.current.vz.set([1.3, 0]);
@@ -81,8 +81,8 @@ describe('scramble pedestrian signal', () => {
     expect(simulation.time).toBe(clock); expect(simulation.signal?.phase).toBe('green');
   });
   it('is deterministic across signal cycles and has no red incursions in a dense queue', () => {
-    const first = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'red' });
-    const second = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'red' });
+    const first = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'red' }, undefined, syntheticShibuya);
+    const second = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'red' }, undefined, syntheticShibuya);
     for (let step = 0; step < 300; step++) { first.step(); second.step(); }
     const left = new Float32Array(first.agents.count * SNAPSHOT_STRIDE), right = new Float32Array(left.length);
     first.writeSnapshot(left); second.writeSnapshot(right);
@@ -96,7 +96,7 @@ describe('scramble pedestrian signal', () => {
 
 describe('shared scramble navigation geometry', () => {
   it('preserves forward motion when avoidance pushes a pedestrian against a zebra edge', () => {
-    const geometry = new Navigation(getScenario('shibuya')).scramble!;
+    const geometry = new Navigation(syntheticShibuya).scramble!;
     const result = { x: 0, z: 0 };
     geometry.constrain(-22.26, 0, -22.20, 0.06, 0.25, false, result);
     expect(geometry.isWalkable(result.x, result.z, 0.25)).toBe(true);
@@ -108,7 +108,7 @@ describe('shared scramble navigation geometry', () => {
     expect(result.z).toBeCloseTo(-18.25);
   });
   it('admits only sidewalks and the five zebra corridors, including the diagonal', () => {
-    const navigation = new Navigation(getScenario('shibuya'));
+    const navigation = new Navigation(syntheticShibuya);
     expect(navigation.isFree(0, 70)).toBe(false);
     expect(navigation.isFree(70, 0)).toBe(false);
     expect(navigation.isFree(-27, 0)).toBe(true);
@@ -121,7 +121,7 @@ describe('shared scramble navigation geometry', () => {
     }
   });
   it('routes between opposite corners without walking outside painted road crossings', () => {
-    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1, signalMode: 'green' });
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1, signalMode: 'green' }, undefined, syntheticShibuya);
     const a = simulation.agents;
     a.current.x[0] = -27; a.current.z[0] = -27; a.current.vx[0] = 0; a.current.vz[0] = 0;
     a.targetId[0] = 3; a.targetX[0] = 52; a.targetZ[0] = 52;
@@ -132,7 +132,7 @@ describe('shared scramble navigation geometry', () => {
     expect(simulation.arrivals).toBe(1);
   });
   it('keeps 20,000 initialized pedestrians on sidewalks and constrains large green flows', () => {
-    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 20000, signalMode: 'red' });
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 20000, signalMode: 'red' }, undefined, syntheticShibuya);
     const a = simulation.agents, geometry = simulation.navigation.scramble!;
     for (let i = 0; i < a.count; i++) expect(geometry.isSidewalk(a.current.x[i], a.current.z[i], a.radius[i])).toBe(true);
     for (let step = 0; step < 8; step++) simulation.step();

@@ -20,7 +20,10 @@ export class ScrambleGeometry {
     this.intervalEnds = new Float64Array(4 + this.corridors.length);
   }
   isSidewalk(x: number, z: number, radius = 0): boolean {
-    return Math.abs(x) >= this.halfWidth + radius && Math.abs(z) >= this.halfWidth + radius;
+    // Integration positions are Float32; keep a clipped curb point classified on
+    // the sidewalk after rounding, using the same tolerance as constrain().
+    const edge = this.halfWidth + radius - 0.00002;
+    return Math.abs(x) >= edge && Math.abs(z) >= edge;
   }
   isWalkable(x: number, z: number, radius = 0): boolean {
     if (this.isSidewalk(x, z, radius)) return true;
@@ -83,6 +86,13 @@ export class ScrambleGeometry {
     if (x * dx < 0) distance = Math.min(distance, (Math.abs(x) - h) / Math.abs(dx));
     if (z * dz < 0) distance = Math.min(distance, (Math.abs(z) - h) / Math.abs(dz));
     return Math.max(0, distance);
+  }
+  brakeAtCurb(x: number, z: number, direction: Direction, radius: number): boolean {
+    if (this.distanceToCurb(x, z, direction.x, direction.z, radius) >= 3) return false;
+    const curb = this.halfWidth + radius + 0.08;
+    if (x * direction.x < 0) direction.x *= Math.max(0, Math.min(1, (Math.abs(x) - curb) / 2.2));
+    if (z * direction.z < 0) direction.z *= Math.max(0, Math.min(1, (Math.abs(z) - curb) / 2.2));
+    return true;
   }
   /** Clip an integration step at the curb or zebra edge, including neighbor-induced motion. */
   constrain(x: number, z: number, nextX: number, nextZ: number, radius: number, sidewalkOnly: boolean, result: Direction): void {

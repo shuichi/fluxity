@@ -35,7 +35,7 @@ const icons = {
 };
 
 const scenarioDetails: Record<ScenarioId, { index: string; name: string; description: string; note: string }> = {
-  shibuya: { index: '01', name: 'Shibuya Scramble', description: 'One signal. Thousands of individual journeys.', note: 'Tokyo-inspired crossing · Signal-controlled flow' },
+  shibuya: { index: '01', name: 'Shibuya Scramble', description: 'Real city geometry. Individual journeys.', note: 'PLATEAU 2025 · LOD2 buildings · Flat-ground study' },
   plaza: { index: '02', name: 'City Plaza', description: 'A city in constant motion.', note: 'Shared destinations · Open urban space' },
   corridor: { index: '03', name: 'Bidirectional Corridor', description: 'Two directions. A shared path.', note: 'Opposing streams · Lane formation' },
   bottleneck: { index: '04', name: 'Bottleneck', description: 'When movement meets resistance.', note: 'Narrow passage · Emerging congestion' },
@@ -76,7 +76,8 @@ export class Controls {
           <section class="control-section scene-section">
             <label class="field-label" for="scenario">Environment</label>
             <div class="select-wrap"><select id="scenario" class="simulation-control"><option value="shibuya">Shibuya Scramble</option><option value="plaza">City Plaza</option><option value="corridor">Bidirectional Corridor</option><option value="bottleneck">Bottleneck</option><option value="crossing">Crossing Flow</option></select></div>
-            <p class="field-hint" id="scenario-note">Tokyo-inspired crossing · Signal-controlled flow</p>
+            <p class="field-hint" id="scenario-note">PLATEAU 2025 · LOD2 buildings · Flat-ground study</p>
+            <div class="map-credit" id="map-credit"><a href="https://www.geospatial.jp/ckan/dataset/plateau-13113-shibuya-ku-2025" target="_blank" rel="noopener noreferrer" title="3D都市モデル（Project PLATEAU）渋谷区（2025年度）を加工して作成">PLATEAU · Shibuya 2025 · adapted</a><span> / </span><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a><span class="map-reference"> · Crossings calibrated with <a href="https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto" target="_blank" rel="noopener noreferrer">GSI imagery</a></span></div>
           </section>
           <details class="control-section signal-section" id="signal-controls" open hidden>
             <summary><span class="field-label">Pedestrian signal</span><span class="signal-control-phase" id="signal-control-phase">Syncing</span></summary>
@@ -85,11 +86,11 @@ export class Controls {
               <button class="simulation-control" data-signal-mode="green" aria-pressed="false" title="Green: pedestrians may cross">Green</button>
               <button class="simulation-control" data-signal-mode="red" aria-pressed="false" title="Red: pedestrians wait at the crossing">Red</button>
             </div>
-            <p class="signal-help">Red holds new arrivals; people already crossing continue.</p>
+            <p class="signal-help">Red holds new arrivals; people already crossing continue. Demo timing: 12s red / 35s green.</p>
           </details>
           <section class="control-section population-section">
             <div class="field-row"><span class="field-label" id="population-label">Population</span><span class="field-unit">AGENTS</span></div>
-            <div class="population-value"><span id="population-value">5,000</span><span class="population-unit">people</span></div>
+            <div class="population-value"><span id="population-value">${config.count.toLocaleString('en-US')}</span><span class="population-unit">people</span></div>
             <div class="segmented population-options" role="group" aria-labelledby="population-label">
               ${[1000, 5000, 10000, 20000].map(n => `<button class="simulation-control" data-count="${n}" aria-pressed="${n === config.count}">${n / 1000}k</button>`).join('')}
             </div>
@@ -110,7 +111,7 @@ export class Controls {
           <button class="compare-button simulation-control" id="benchmark-button">${icons.chart}<span>Compare performance</span>${icons.arrow}</button>
           <div class="panel-footnote"><span class="small-dot"></span>30 Hz simulation · Independent rendering</div>
         </aside>
-        <div class="scene-caption" aria-live="polite"><div class="scene-kicker"><span class="scene-index" id="scene-index">01</span><span>URBAN DYNAMICS</span><span class="caption-line"></span></div><h1 id="scene-title">Shibuya Scramble</h1><p id="scene-description">One signal. Thousands of individual journeys.</p></div>
+        <div class="scene-caption" aria-live="polite"><div class="scene-kicker"><span class="scene-index" id="scene-index">01</span><span>URBAN DYNAMICS</span><span class="caption-line"></span></div><h1 id="scene-title">Shibuya Scramble</h1><p id="scene-description">Real city geometry. Individual journeys.</p></div>
         <div class="signal-badge" id="scene-signal" data-phase="pending" role="group" aria-label="Live pedestrian signal" hidden>
           <div class="signal-badge-state"><span class="signal-lamps" aria-hidden="true"><i></i><i></i></span><div><span class="signal-badge-kicker" id="signal-cycle-label">PEDESTRIAN SIGNAL</span><div class="signal-phase-line"><strong id="signal-phase">SYNCING</strong><span id="signal-countdown">—</span></div></div></div>
           <div class="signal-badge-metrics"><span>Waiting <b id="signal-waiting">—</b></span><span>Crossing <b id="signal-crossing">—</b></span></div>
@@ -119,7 +120,7 @@ export class Controls {
         <nav class="camera-toolbar" aria-label="Camera views"><span class="camera-label">VIEW</span><div class="camera-buttons"><button class="icon-button active" data-camera="perspective" aria-label="Perspective view" aria-pressed="true" title="Perspective">${icons.perspective}</button><button class="icon-button" data-camera="overview" aria-label="Overhead view" aria-pressed="false" title="Overhead">${icons.overview}</button><button class="icon-button" data-camera="street" aria-label="Street level view" aria-pressed="false" title="Street level">${icons.street}</button><span class="toolbar-divider"></span><button class="icon-button" data-camera="reset" aria-label="Reset camera" title="Reset camera">${icons.reset}</button></div></nav>
         <div class="navigation-hint">${icons.mouse}<div><span><b>Drag</b> to orbit <i>·</i> <b>Scroll</b> to zoom</span><span><b>Right drag</b> to pan <i>·</i> <kbd>space</kbd> to pause</span></div></div>
         <div id="stats"></div>
-        <div class="loading-overlay" id="loading-overlay" role="status"><span class="loader-symbol" aria-hidden="true"><i></i><i></i><i></i></span><h2>Setting Shibuya in motion</h2><p id="loading-message">Preparing WebGPU and your first 5,000 pedestrians.</p></div>
+        <div class="loading-overlay" id="loading-overlay" role="status"><span class="loader-symbol" aria-hidden="true"><i></i><i></i><i></i></span><h2>Setting Shibuya in motion</h2><p id="loading-message">Preparing WebGPU, the city map and ${config.count.toLocaleString('en-US')} pedestrians.</p></div>
         <div class="error-overlay" id="error-overlay" role="alert" hidden><div class="error-card"><span class="error-icon">${icons.perspective}</span><span class="eyebrow">RENDERER UNAVAILABLE</span><h2>This city needs WebGPU.</h2><p id="error-message"></p><p class="error-help">Use a current desktop Chrome or Edge with hardware acceleration enabled. WebGPU requires HTTPS or localhost.</p><button class="primary-button" id="retry-button">${icons.reset}<span>Try again</span></button><span class="error-detail">No WebGL fallback is used.</span></div></div>
         <section class="benchmark-panel" id="benchmark-panel" aria-label="Population performance comparison" hidden>
           <div class="benchmark-heading"><div><span class="eyebrow">PERFORMANCE STUDY</span><h2>People &amp; performance</h2></div><button class="icon-button" id="benchmark-close" aria-label="Close performance comparison">${icons.close}</button></div>
@@ -253,6 +254,7 @@ export class Controls {
     this.get('scene-title').textContent = details.name;
     this.get('scene-description').textContent = details.description;
     this.get('scenario-note').textContent = details.note;
+    this.get('map-credit').hidden = config.scenario !== 'shibuya';
     this.get('signal-controls').hidden = config.scenario !== 'shibuya';
     this.root.classList.toggle('signal-scene', config.scenario === 'shibuya');
     this.root.querySelectorAll<HTMLButtonElement>('[data-signal-mode]').forEach(button => {

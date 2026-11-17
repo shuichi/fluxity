@@ -1,5 +1,6 @@
-import type { Scenario } from '../types';
+import type { Point2, Scenario } from '../types';
 import { ScrambleGeometry } from './ScrambleGeometry';
+import { UrbanGeometry } from './UrbanGeometry';
 
 export interface Direction { x: number; z: number }
 
@@ -53,18 +54,48 @@ export class Navigation {
   readonly rows: number;
   readonly walkable: Uint8Array;
   readonly fields: FlowField[];
-  readonly cellSize = 1.5;
-  readonly scramble: ScrambleGeometry | undefined;
+  readonly cellSize: number;
+  readonly clearance: number;
+  readonly scramble: ScrambleGeometry | UrbanGeometry | undefined;
+  readonly urban: UrbanGeometry | undefined;
+  readonly goals: Point2[] = [];
+  readonly spawnCells: number[] = [];
+  private readonly connections: Uint8Array | undefined;
   constructor(readonly scenario: Scenario) {
-    this.scramble = scenario.scramble ? new ScrambleGeometry(scenario) : undefined;
+    this.urban = scenario.urbanMap ? new UrbanGeometry(scenario) : undefined;
+    this.scramble = this.urban ?? (scenario.scramble ? new ScrambleGeometry(scenario) : undefined);
+    this.cellSize = scenario.navigationCellSize ?? (this.urban ? 1 : 1.5);
+    if (!Number.isFinite(this.cellSize) || this.cellSize < 0.25 || this.cellSize > 4) throw new Error('Invalid navigation cell size.');
+    if (!scenario.targets.length || !scenario.spawnZones.length) throw new Error('A scenario requires destinations and spawn zones.');
+    for (const index of [...(scenario.spawnTargets ?? []), ...(scenario.targetTransitions ?? [])]) {
+      if (!Number.isInteger(index) || index < 0 || index >= scenario.targets.length) throw new Error('A scenario references an invalid destination.');
+    }
+    this.clearance = this.urban ? 0.34 : 0.58;
     const b = scenario.bounds;
     this.columns = Math.ceil((b.maxX - b.minX) / this.cellSize);
     this.rows = Math.ceil((b.maxZ - b.minZ) / this.cellSize);
     this.walkable = new Uint8Array(this.columns * this.rows);
     for (let z = 0; z < this.rows; z++) for (let x = 0; x < this.columns; x++) {
-      this.walkable[z * this.columns + x] = this.isFree(b.minX + (x + 0.5) * this.cellSize, b.minZ + (z + 0.5) * this.cellSize, 0.58) ? 1 : 0;
+      this.walkable[z * this.columns + x] = this.isFree(b.minX + (x + 0.5) * this.cellSize, b.minZ + (z + 0.5) * this.cellSize, this.clearance) ? 1 : 0;
+    }
+    if (this.urban) {
+      this.connections = new Uint8Array(this.walkable.length);
+      this.connectUrbanCells();
     }
     this.fields = scenario.targets.map(target => this.buildField(target.x, target.z));
+    // A real map can include disconnected courtyards. Keep the component shared by every destination.
+    if (this.urban) for (let cell = 0; cell < this.walkable.length; cell++) {
+      if (this.walkable[cell] && !this.fields.every(field => Number.isFinite(field.costs[cell]))) this.walkable[cell] = 0;
+    }
+    if (this.urban && this.goals.some(goal => !this.walkable[this.cellAt(goal.x, goal.z)])) {
+      throw new Error('Map destinations are disconnected: check crossing widths and sidewalk connections.');
+    }
+    for (let cell = 0; cell < this.walkable.length; cell++) if (this.walkable[cell]) {
+      const x = b.minX + (cell % this.columns + 0.5) * this.cellSize;
+      const z = b.minZ + (Math.floor(cell / this.columns) + 0.5) * this.cellSize;
+      if (!this.scramble || this.scramble.isSidewalk(x, z, 0.7)) this.spawnCells.push(cell);
+    }
+    if (!this.spawnCells.length) throw new Error('Map has no reachable sidewalk cells for spawning.');
   }
   isFree(x: number, z: number, radius = 0.3): boolean {
     const b = this.scenario.bounds;
@@ -81,8 +112,39 @@ export class Navigation {
     const cz = Math.max(0, Math.min(this.rows - 1, Math.floor((z - b.minZ) / this.cellSize)));
     return cz * this.columns + cx;
   }
+  isReachable(x: number, z: number, target = 0): boolean {
+    const cell = this.cellAt(x, z);
+    return !!this.walkable[cell] && Number.isFinite(this.fields[target]?.costs[cell]);
+  }
+  isSpawnable(x: number, z: number, radius = 0.7): boolean {
+    return this.isFree(x, z, radius) && (!this.scramble || this.scramble.isSidewalk(x, z, radius))
+      && (!this.urban || this.isReachable(x, z));
+  }
+  private connectUrbanCells(): void {
+    const b = this.scenario.bounds;
+    for (let cell = 0; cell < this.walkable.length; cell++) {
+      if (!this.walkable[cell]) continue;
+      const cx = cell % this.columns, cz = Math.floor(cell / this.columns);
+      const x = b.minX + (cx + 0.5) * this.cellSize, z = b.minZ + (cz + 0.5) * this.cellSize;
+      for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oz) continue;
+        const nx = cx + ox, nz = cz + oz;
+        if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows || !this.walkable[nz * this.columns + nx]) continue;
+        if (ox && oz && (!this.walkable[cz * this.columns + nx] || !this.walkable[nz * this.columns + cx])) continue;
+        if (this.urban!.lineWalkable(x, z, x + ox * this.cellSize, z + oz * this.cellSize, this.clearance)) {
+          const bit = (oz + 1) * 3 + ox + 1;
+          this.connections![cell] |= 1 << (bit > 4 ? bit - 1 : bit);
+        }
+      }
+    }
+  }
+  private connected(cell: number, ox: number, oz: number): boolean {
+    if (!this.connections) return true;
+    const bit = (oz + 1) * 3 + ox + 1;
+    return !!(this.connections[cell] & (1 << (bit > 4 ? bit - 1 : bit)));
+  }
   /** Slab test prevents steering straight through obstacles, including diagonally through corners. */
-  lineOfSight(x: number, z: number, tx: number, tz: number, radius = 0.58): boolean {
+  lineOfSight(x: number, z: number, tx: number, tz: number, radius = this.clearance): boolean {
     if (this.scramble && !this.scramble.lineWalkable(x, z, tx, tz, radius)) return false;
     const dx = tx - x, dz = tz - z;
     for (const obstacle of this.scenario.obstacles) {
@@ -105,12 +167,13 @@ export class Navigation {
     }
     return true;
   }
-  direction(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction): void {
+  direction(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction, radius = this.clearance): void {
+    if (this.urban) { this.urbanDirection(x, z, targetId, targetX, targetZ, result, radius); return; }
     let dx = targetX - x, dz = targetZ - z;
     if (!this.lineOfSight(x, z, targetX, targetZ)) {
       const field = this.fields[targetId];
       let cell = this.cellAt(x, z);
-      if (!this.walkable[cell]) {
+      if (!this.walkable[cell] || !Number.isFinite(field.costs[cell])) {
         let best = Infinity;
         const cx = cell % this.columns, cz = Math.floor(cell / this.columns);
         for (let oz = -2; oz <= 2; oz++) for (let ox = -2; ox <= 2; ox++) {
@@ -136,6 +199,44 @@ export class Navigation {
     result.x = length > 1e-5 ? dx / length : 0;
     result.z = length > 1e-5 ? dz / length : 0;
   }
+  /** Short flow-field lookahead avoids tracing a hundred-meter polygon ray for every agent. */
+  private urbanDirection(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction, radius: number): void {
+    let dx = targetX - x, dz = targetZ - z;
+    if (dx * dx + dz * dz > 100 || !this.urban!.lineWalkable(x, z, targetX, targetZ, radius)) {
+      const field = this.fields[targetId], bounds = this.scenario.bounds;
+      let cell = this.cellAt(x, z), chosen = -1;
+      const cx = cell % this.columns, cz = Math.floor(cell / this.columns);
+      let best = Infinity;
+      // Include a nearby cell on the same component when avoidance moves off the raster centerline.
+      for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+        const nx = cx + ox, nz = cz + oz;
+        if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows) continue;
+        const next = nz * this.columns + nx;
+        if (!this.walkable[next] || !Number.isFinite(field.costs[next])) continue;
+        const px = bounds.minX + (nx + 0.5) * this.cellSize, pz = bounds.minZ + (nz + 0.5) * this.cellSize;
+        const score = field.costs[next] + Math.hypot(px - x, pz - z) * 0.1;
+        if (score >= best || !this.urban!.lineWalkable(x, z, px, pz, radius)) continue;
+        chosen = next; best = score;
+      }
+      if (chosen < 0) { result.x = result.z = 0; return; }
+      cell = chosen;
+      let px = bounds.minX + (cell % this.columns + 0.5) * this.cellSize;
+      let pz = bounds.minZ + (Math.floor(cell / this.columns) + 0.5) * this.cellSize;
+      for (let step = 0; step < 3; step++) {
+        const ox = Math.sign(field.x[cell]), oz = Math.sign(field.z[cell]);
+        if ((!ox && !oz) || !this.connected(cell, ox, oz)) break;
+        const next = cell + oz * this.columns + ox;
+        const nx = bounds.minX + (next % this.columns + 0.5) * this.cellSize;
+        const nz = bounds.minZ + (Math.floor(next / this.columns) + 0.5) * this.cellSize;
+        if (!this.walkable[next] || !this.urban!.lineWalkable(x, z, nx, nz, radius)) break;
+        cell = next; px = nx; pz = nz;
+      }
+      dx = px - x; dz = pz - z;
+    }
+    const length = Math.hypot(dx, dz);
+    result.x = length > 1e-5 ? dx / length : 0;
+    result.z = length > 1e-5 ? dz / length : 0;
+  }
   private buildField(targetX: number, targetZ: number): FlowField {
     const count = this.walkable.length;
     const costs = new Float32Array(count); costs.fill(Infinity);
@@ -150,6 +251,9 @@ export class Navigation {
         if (distance < best) { best = distance; goal = i; }
       }
     }
+    if (!this.walkable[goal]) throw new Error('Map has no walkable navigation cells.');
+    this.goals.push({ x: this.scenario.bounds.minX + (goal % this.columns + 0.5) * this.cellSize,
+      z: this.scenario.bounds.minZ + (Math.floor(goal / this.columns) + 0.5) * this.cellSize });
     const heap = new MinHeap(costs); costs[goal] = 0; heap.update(goal);
     while (!heap.empty) {
       const cell = heap.pop(), cx = cell % this.columns, cz = Math.floor(cell / this.columns);
@@ -158,7 +262,7 @@ export class Navigation {
         const nx = cx + ox, nz = cz + oz;
         if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows) continue;
         const neighbor = nz * this.columns + nx;
-        if (!this.walkable[neighbor]) continue;
+        if (!this.walkable[neighbor] || !this.connected(cell, ox, oz)) continue;
         if (ox !== 0 && oz !== 0 && (!this.walkable[cz * this.columns + nx] || !this.walkable[nz * this.columns + cx])) continue;
         const distance = costs[cell] + (ox !== 0 && oz !== 0 ? Math.SQRT2 : 1);
         if (distance + 1e-4 < costs[neighbor]) { costs[neighbor] = distance; heap.update(neighbor); }
@@ -173,7 +277,7 @@ export class Navigation {
         if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows) continue;
         const neighbor = nz * this.columns + nx;
         if (ox !== 0 && oz !== 0 && (!this.walkable[cz * this.columns + nx] || !this.walkable[nz * this.columns + cx])) continue;
-        if (costs[neighbor] < best) { best = costs[neighbor]; x[cell] = ox; z[cell] = oz; }
+        if ((ox || oz) && this.connected(cell, ox, oz) && costs[neighbor] < best) { best = costs[neighbor]; x[cell] = ox; z[cell] = oz; }
       }
       const length = Math.hypot(x[cell], z[cell]);
       if (length > 0) { x[cell] /= length; z[cell] /= length; }

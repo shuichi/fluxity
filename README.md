@@ -2,7 +2,7 @@
 
 ネイティブ **WebGPU / WGSL** と TypeScript で作った、リアルタイム3D群集シミュレーション。ゲームエンジン、3Dエンジン、WebGL、リモートの人物アセットは使用しません。
 
-![Fluxity Shibuya Scramble](docs/screenshots/shibuya-green.jpg)
+![Fluxity Shibuya Scramble](docs/screenshots/plateau-shibuya.jpg)
 
 ## 起動
 
@@ -13,14 +13,15 @@ npm install
 npm run dev
 ```
 
-表示された `http://127.0.0.1:5173` を開きます。初期状態は **Shibuya Scramble / 5,000人 / seed 42 / 自動信号** です。
+表示された `http://127.0.0.1:5173` を開きます。初期状態は **Shibuya Scramble / 1,000人 / seed 42 / 自動信号** です。
 
 ```sh
 npm run typecheck  # strict TypeScript
 npm test           # 数値・経路・メモリ境界のテスト
 npm run build      # 型チェック + dist/ への本番ビルド
 npm run preview    # ビルド結果をローカルで確認
-npm run benchmark  # Node上のCPUシミュレーション性能測定
+npm run benchmark  # 広場のCPUシミュレーション性能測定
+npm run benchmark:shibuya  # PLATEAU渋谷、青固定、1,000 / 5,000人
 ```
 
 推奨環境は、ハードウェアアクセラレーションが有効なWindows/macOSの最新ChromeまたはEdgeです。WebGPUを実装した他のブラウザでも利用できます。`localhost` / `127.0.0.1` またはHTTPSのsecure contextが必要です。GPU・ドライバ・ブラウザのポリシーによって利用できない場合は、画面に原因と推奨環境を表示します。WebGLへの代替実装はありません。
@@ -71,13 +72,13 @@ Viteの `base: './'` により、JavaScript・CSS・favicon・Workerを `/fluxit
 
 - **Simulation**：DOM/WebGPUから独立したCPUのSoA状態。固定30 Hz、読み取り状態と次状態を分離。シード付き乱数。
 - **Navigation**：障害物を含む歩行可能グリッドと目的地共有Flow Field。
-- **Scramble crossing**：車道・歩道・斜めを含む横断歩道と商業ビルからなる、渋谷に着想を得たステージ。描画と経路探索で横断歩道の配置データを共有します。信号はWorkerのシミュレーション時計で制御します。
+- **Scramble crossing**：PLATEAU渋谷区2025年度版から切り出した約500m四方・440棟のLOD2建物と道路・歩道。歩行範囲は250m四方、5本の横断歩道・広場の補正は国土地理院の航空写真を参考に設定しています。描画と経路探索は同じ地図を共有し、信号はWorkerのシミュレーション時計で制御します。
 - **Avoidance**：Uniform Gridによる近傍探索、目的地誘導、予測回避、速度調整、加速度・旋回速度制限、壁の押し戻し。
 - **Worker**：上限付きの固定ステップ更新。Transferable ArrayBufferのプールを使用し、世代番号でリセット前の結果を除外。SharedArrayBuffer / COOP / COEPは不要。
 - **Rendering**：WebGPUを直接使用。前後2スナップショットの位置・向き・歩行位相を補間し、requestAnimationFrameで表示。
 - **People**：共有プロシージャルメッシュ。頭・髪・胴・腕・脚・靴を生成。体格・肌・服を個体ごとに変化。WGSLの頂点シェーダでIdle / Walk / Runの関節運動を計算。
 - **Batching**：画面投影サイズによる3段階LOD、ヒステリシス、Frustum Culling、LODごとのInstance Compaction。人数に比例するDraw Callは発行しません。
-- **Environment**：舗装、建物、シナリオ障害物、植栽、Directional / Ambient Lighting、距離フォグ、Instanced Quadの接地影。
+- **Environment**：渋谷は事前変換した静的メッシュを同梱。その他のシナリオはプロシージャル生成。Directional / Ambient Lighting、距離フォグ、Instanced Quadの接地影。
 - **UI**：HTML/CSS/TypeScriptのみ。実測の統計と非対応時のエラー表示。
 
 詳細は [docs/architecture.md](docs/architecture.md) を参照してください。群集の経路探索・局所回避・信号制御の数式と原典は [アルゴリズム解説](docs/algorithms.html) にまとめています。このHTMLは本番ビルドにも含まれ、GitHub Pagesでは `/fluxity/docs/algorithms.html` で公開できます。
@@ -90,21 +91,23 @@ Viteの `base: './'` により、JavaScript・CSS・favicon・Workerを `/fluxit
 
 `npm run benchmark` はCPUのみの再現可能な測定です。ブラウザ内のBenchmarkは、その時点の描画を含む計測です。高密度のBottleneckでは局所回避の負荷が大きくなるため、広場と分けて比較してください。
 
-2026-11-17の実機検証では、1920×1080 / Balanced / 広場で1,000〜20,000人を約120 FPSで描画し、20,000人のCPU計算は平均27.13 ms/stepでした（各条件4秒の短時間計測）。渋谷ステージは経路制約と密集度が異なるため、この広場の数値は流用できません。混雑が進むと5,000人でもCPU計算が30 Hzの時間枠を超える場合があり、20,000人ではさらに負荷が増えます。比較時には信号をGreenまたはRedに固定してください。
+2026-11-18のPLATEAU渋谷の実機検証では、1920×1080のブラウザ画面（描画領域1920×1006）/ Balanced / 青固定で1,000〜20,000人を約120 FPSで描画しました。CPU計算は1,000人で8.80 ms/step、5,000人で36.99 ms/stepでした（各条件4秒の短時間計測）。描画と歩行計算は独立しているため、高いFPSでも30 Hzの歩行計算を維持できるとは限りません。初期人数は1,000人とし、比較時は信号をGreenまたはRedに固定してください。
 
-信号機能の追加後、**50件の自動テスト・型チェック・本番ビルド**に成功しています。条件・人数別の数値・スクリーンショット・未検証範囲は [検証記録](docs/validation.md) に記載しています。
+PLATEAU対応では、実データの経路接続・赤信号・衝突制約・大人数初期化、メッシュの完全性と非同期読み込みを追加検証しています。条件・人数別の数値・スクリーンショット・未検証範囲は [検証記録](docs/validation.md) に記載しています。
 
 ## 制約・拡張
 
 - 軽量なSteeringモデルです。厳密なORCAや研究用途の歩行者モデル、物理的に完全な非貫通・群集圧力の保証はありません。過密状態では滞留や重なりが起こり得ます。
-- 渋谷ステージはスタイライズした模擬空間です。実際の道路寸法・建物・信号周期の精密な再現ではなく、車両シミュレーションも含みません。赤信号では横断開始を抑止し、横断中の歩行者が車道上で一斉停止しないようにしています。過密時には出口の歩道に滞留が生じ、全員が一定時間内に渡り終える保証はありません。
+- 渋谷ステージの建物・道路はPLATEAU由来ですが、地面は平面化し、写真テクスチャは使用しません。横断歩道・広場・信号配置はデモ用の補正、信号周期は赤12秒・青35秒です。2025年度版は以前に作成された地物も含み、現在の再開発状況を保証するものではありません。坂道・デッキ・地下・車両のシミュレーションは含みません。赤信号では横断開始を抑止し、横断中の歩行者が車道上で一斉停止しないようにしています。過密時には出口の歩道に滞留が生じ、全員が一定時間内に渡り終える保証はありません。
 - Flow Fieldは静的シナリオ用です。動的障害物、NavMesh、個別のA*、マルチフロアは未実装です。
 - glTF / スキニング / Animation Texture、GPU Computeによるカリング・シミュレーション、Indirect Draw、正確なGPU timestamp計測は将来の拡張です。
 - GPUバッファは最大20,000人向けに確保します。20,000人超への拡張では上限、シミュレーション密度、転送量、カリングを再評価してください。
 - WebGPUのDevice loss・初期化失敗・WGSLコンパイル・Validation errorを診断します。Device loss後の自動復旧はせず、再読み込みを案内します。
 - 描画とSimulationの境界は数値配列とメッセージのみです。SimulationをRust/WASMへ置き換え、同じSnapshot契約を維持できます。
 
-実行時に外部CDN・フォント・画像・モデルのダウンロードは発生しません。
+実行時はアプリと同じ配信元から約10MBの渋谷メッシュを読み込みます。外部CDN・PLATEAU API・地図画像へのアクセスは不要です。地図とメッシュのSHA-256を照合し、異なる版のデータが混在した場合は読み込みエラーにします。
+
+データ取得・再生成・座標系・出典は [PLATEAUデータの説明](docs/plateau-data.md) を参照してください。通常の起動・ビルドはPython不要です。渋谷の派生データはCC BY 4.0で使用し、出典は「3D都市モデル（Project PLATEAU）渋谷区（2025年度）を加工して作成」です。横断歩道等の校正には [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto) を参照しています。コードのGPLライセンスとデータの出典・ライセンスは区別しています。
 
 ## 仕様参照
 

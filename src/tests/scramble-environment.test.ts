@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createEnvironment, ENVIRONMENT_VERTEX_STRIDE } from '../renderer/Environment';
 import { SCENE_MATERIAL } from '../renderer/ScrambleEnvironment';
-import { shibuya } from '../scenarios/shibuya';
+import { syntheticShibuya as shibuya } from './fixtures/synthetic-shibuya';
 import { plaza } from '../scenarios/plaza';
 import type { Scenario } from '../types';
 

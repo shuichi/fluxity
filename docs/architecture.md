@@ -35,7 +35,11 @@ flowchart LR
 | `src/scenarios/` | Declarative scene bounds, obstacles, spawns and destinations |
 | `src/simulation/TrafficSignal.ts` | Deterministic automatic/manual pedestrian signal state |
 | `src/simulation/ScrambleGeometry.ts` | Shared sidewalk/zebra surface, curb limits and tangential boundary sliding |
-| `src/renderer/ScrambleEnvironment.ts` | Procedural Shibuya-inspired scenery and pedestrian signal materials |
+| `src/simulation/UrbanGeometry.ts` | Indexed polygon boundaries, holes, swept movement and curb-normal braking |
+| `src/renderer/ScrambleEnvironment.ts` | Pedestrian signal fixtures and legacy synthetic crossing scenery |
+| `src/renderer/UrbanMesh.ts` | Version-checked binary loading, CPU cache and mesh merging |
+| `scripts/import-plateau.py` | Pinned CityGML extraction, projection, triangulation and geometry validation |
+| `data/shibuya/layout.json` | Calibrated crosswalks, plaza corrections, signals, spawn zones and destinations |
 | `src/renderer/` | WebGPU resource ownership, camera, mesh generation, LOD and culling |
 | `src/shaders/` | WGSL environment, human and contact-shadow rendering |
 | `src/tests/` | Determinism, numerical constraints, navigation and buffer contracts |
@@ -51,7 +55,7 @@ Rendering interpolates one tick behind the latest simulation state. Heading foll
 
 ## Pedestrian signals
 
-Shibuya is the default scene. Its optional `Scenario.scramble` data defines the road half-width, five zebra crossing segments and signal fixture positions. The CPU navigator and renderer consume the same geometry. Other scenes retain their original behavior.
+Shibuya is the default scene, with 1,000 people. `Scenario.urbanMap` contains unioned sidewalk and walkable polygons with holes; buildings and traffic islands are excluded. `Scenario.scramble` contains five crosswalk segments and explicit signal directions. The importer builds both painted crossings and the navigable union from the same calibrated layout. Navigation uses a 0.75m grid within the 250m simulation bounds; the background covers 500m. The legacy synthetic crossing remains a regression fixture and uses `roadHalfWidth`. Other scenes retain their original behavior.
 
 The automatic cycle uses 12 simulation seconds of red followed by 35 of green. These are demonstration timings, not the real Shibuya signal schedule. Manual Green/Red hold that state without resetting people or simulation time; returning to Auto rejoins the simulation-clock cycle. Pause and time scaling therefore affect the automatic cycle consistently.
 
@@ -88,8 +92,16 @@ This is a CPU transfer format. The renderer repacks visible instances into its W
 
 ## Rendering resource lifetime
 
-Meshes, instance capacity, uniforms, bind groups and pipelines are long-lived. Scenario changes rebuild static environment geometry. Canvas size or quality changes resize the depth target; the maximum texture dimension and device pixel ratio cap bound allocation. Destruction releases owned buffers/textures/device resources and event listeners. Initialization checks WebGPU availability, adapter/device failures, feature/limit compatibility, shader compilation, and validation errors.
+Meshes, instance capacity, uniforms, bind groups and pipelines are long-lived. Scenario changes rebuild static environment geometry. For Shibuya, asynchronous binary loading validates byte lengths, SHA-256, vertex normals and index bounds before GPU upload. Worker initialization waits for the matching scenery; generation tokens reject stale scenery loads as well as old worker snapshots. Successful CPU assets are cached while GPU buffers remain renderer-owned. Canvas size or quality changes resize the depth target; the maximum texture dimension and device pixel ratio cap bound allocation. Destruction releases owned buffers/textures/device resources and event listeners. Initialization checks WebGPU availability, adapter/device failures, feature/limit compatibility, shader compilation, and validation errors.
 
 ## Verification
 
 `npm test`, `npm run typecheck`, and `npm run build` are the automated gates. `npm run benchmark` measures the CPU core. Browser validation must additionally check actual WGSL compilation, visible human geometry, motion, pause/resume, scenario changes, 20,000-agent operation, camera controls, and resizing. A successful build alone does not establish GPU correctness.
+
+## PLATEAU data boundary
+
+The conversion pipeline reads four pinned CityGML meshes. JGD2011 latitude/longitude is projected to plane rectangular zone IX and centered at 35.6595N, 139.7005E; the app uses x east, y up, z south. Each building is grounded using its lowest source geometry height, preserving its relative roof/wall shape. The data is an explicitly flattened ground study, without textures or multilevel navigation.
+
+The renderer receives only 40-byte vertices and uint32 indices. The Worker imports the smaller polygon map, never the building rendering buffers. Buildings and map surfaces are triangulated offline with concave rings and holes; ground, road, sidewalks and zebra markings tile the plane without coplanar overlap. Provenance, source hashes, selected building IDs/LOD, manual corrections and limitations are recorded in `public/data/shibuya/manifest.json`. Reproduction steps are in [plateau-data.md](plateau-data.md).
+
+PolygonRegion indexes boundary segments into spatial buckets and horizontal rows. It uses radius-aware containment, swept segment checks and tangential sliding. Classification and movement use the same clearance. Before storing positions, UrbanGeometry validates Float32 rounding and, only when needed, reserves 0.1mm inward without increasing the requested travel distance. This keeps curb-side waiters from becoming crossers due to rounding. Flow fields retain only the connected component shared by all destinations; spawn cells come from valid sidewalk cells in that component. Explicit destination transitions replace assumptions about four symmetric corners.

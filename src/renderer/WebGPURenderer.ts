@@ -8,6 +8,8 @@ import { createHumanMesh, HUMAN_VERTEX_STRIDE } from './HumanMesh';
 import { createEnvironment, ENVIRONMENT_VERTEX_STRIDE } from './Environment';
 import { InstanceBuffer, INSTANCE_STRIDE } from './InstanceBuffer';
 import { LIGHTING } from './Lighting';
+import { UrbanMeshLoader, mergeEnvironmentMeshes } from './UrbanMesh';
+import type { EnvironmentMeshData } from './UrbanMesh';
 
 interface Mesh {
   vertex: GPUBuffer;
@@ -36,6 +38,9 @@ export class WebGPURenderer {
   private width = 0;
   private height = 0;
   private dead = false;
+  private disposed = false;
+  private scenarioRequest = 0;
+  private readonly urbanMeshes = new UrbanMeshLoader();
   private roadHalfWidth = 0;
 
   private constructor(
@@ -152,20 +157,39 @@ export class WebGPURenderer {
     [this.humanPipeline, this.environmentPipeline, this.shadowPipeline] = pipelines;
   }
 
-  private uploadMesh(data: { vertices: Float32Array<ArrayBuffer>; indices: Uint32Array<ArrayBuffer> }, label: string): Mesh {
+  private uploadMesh(data: EnvironmentMeshData, label: string): Mesh {
+    if (data.vertices.byteLength > this.device.limits.maxBufferSize || data.indices.byteLength > this.device.limits.maxBufferSize) {
+      throw new Error('This GPU cannot allocate the urban scenery buffer.');
+    }
     const vertex = this.device.createBuffer({ label: `${label} vertices`, size: data.vertices.byteLength, usage: GPUBufferUsage.VERTEX, mappedAtCreation: true });
-    new Float32Array(vertex.getMappedRange()).set(data.vertices); vertex.unmap();
-    const index = this.device.createBuffer({ label: `${label} indices`, size: data.indices.byteLength, usage: GPUBufferUsage.INDEX, mappedAtCreation: true });
-    new Uint32Array(index.getMappedRange()).set(data.indices); index.unmap();
-    return { vertex, index, indexCount: data.indices.length };
+    let index: GPUBuffer | undefined;
+    try {
+      new Float32Array(vertex.getMappedRange()).set(data.vertices); vertex.unmap();
+      index = this.device.createBuffer({ label: `${label} indices`, size: data.indices.byteLength, usage: GPUBufferUsage.INDEX, mappedAtCreation: true });
+      new Uint32Array(index.getMappedRange()).set(data.indices); index.unmap();
+      return { vertex, index, indexCount: data.indices.length };
+    } catch (error) { vertex.destroy(); index?.destroy(); throw error; }
   }
 
-  setScenario(scenario: Scenario): void {
-    this.environment?.vertex.destroy(); this.environment?.index.destroy();
-    this.environment = this.uploadMesh(createEnvironment(scenario), scenario.name);
-    this.roadHalfWidth = scenario.scramble?.roadHalfWidth ?? 0;
-    this.camera.setBounds(scenario.bounds, Boolean(scenario.scramble));
-    this.instances.lod.reset();
+  setScenario(scenario: Scenario): void | Promise<void> {
+    if (this.dead) return;
+    const request = ++this.scenarioRequest;
+    const install = (data: EnvironmentMeshData): void => {
+      if (this.dead || request !== this.scenarioRequest) return;
+      const next = this.uploadMesh(data, scenario.name);
+      this.environment?.vertex.destroy(); this.environment?.index.destroy();
+      this.environment = next;
+      this.roadHalfWidth = scenario.urbanMap ? 0 : scenario.scramble?.roadHalfWidth ?? 0;
+      this.camera.setBounds(scenario.bounds, Boolean(scenario.scramble), Boolean(scenario.urbanMap));
+      this.instances.lod.reset();
+    };
+    if (scenario.urbanMap) {
+      return this.urbanMeshes.load(scenario.urbanMap).then((data) => {
+        if (this.dead || request !== this.scenarioRequest) return;
+        install(mergeEnvironmentMeshes(data, createEnvironment(scenario)));
+      });
+    }
+    install(createEnvironment(scenario));
   }
 
   private resize(quality: Quality): void {
@@ -237,7 +261,11 @@ export class WebGPURenderer {
   }
 
   destroy(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.dead = true;
+    this.scenarioRequest++;
+    this.urbanMeshes.clear();
     this.camera.destroy(); this.instances.destroy(); this.sceneBuffer.destroy(); this.depth?.destroy();
     this.environment?.vertex.destroy(); this.environment?.index.destroy();
     for (const mesh of this.humans) { mesh.vertex.destroy(); mesh.index.destroy(); }
