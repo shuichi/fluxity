@@ -179,15 +179,10 @@ button:active:not(:disabled) {
   display:none;
 }
 
-.lab-label,.eyebrow {
+.eyebrow {
   font-size:10px;
   font-weight:700;
   letter-spacing:1.6px;
-}
-
-.lab-label {
-  color:#899286;
-  font-size:9px;
 }
 
 .runtime-status {
@@ -1540,9 +1535,6 @@ input[type=range]::-moz-range-thumb {
   }
   .stats-details-button {
     width:45px;
-  }
-  .lab-label {
-    display:none;
   }
   .loading-overlay {
     padding-left:260px;
