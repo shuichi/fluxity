@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { shibuya } from '../scenarios/shibuya';
 import type { Point2, Polygon2, Scenario } from '../types';
 import { CrossingExits } from '../simulation/CrossingExits';
 import { Navigation } from '../simulation/Navigation';
@@ -7,6 +8,24 @@ import { SpatialGrid } from '../simulation/SpatialGrid';
 function polygon(vertices: [number, number][]): Polygon2 {
   return { rings: [vertices.map(([x, z]) => ({ x, z }))] };
 }
+
+it('finishes a stalled crossing in one stride when a shoulder is still over the curb', () => {
+  const nav = new Navigation(shibuya), exits = new CrossingExits(nav, new SpatialGrid(shibuya.bounds, 1));
+  const x = 19.23, z = 16.08, radius = 0.27;
+  const landing = { x: 16.375, z: 14.125 }, next = { x: 0, z: 0 };
+  expect(nav.scramble!.isSidewalk(x, z)).toBe(true);
+  expect(nav.scramble!.isSidewalk(x, z, radius)).toBe(false);
+  expect(exits.reselect(x, z, radius, landing.x, landing.z, next)).toBe(true);
+  expect(Math.hypot(next.x - x, next.z - z)).toBeLessThan(1);
+  expect(nav.lineOfSight(x, z, next.x, next.z, radius)).toBe(true);
+  expect(nav.scramble!.isSidewalk(next.x, next.z, radius)).toBe(true);
+  // The walker is still in the same spot at the next stalled-progress review.
+  const alternate = { x: 0, z: 0 };
+  expect(exits.reselect(x, z, radius, next.x, next.z, alternate)).toBe(true);
+  expect(Math.hypot(alternate.x - next.x, alternate.z - next.z)).toBeGreaterThan(0.6);
+  expect(nav.lineOfSight(x, z, alternate.x, alternate.z, radius)).toBe(true);
+  expect(nav.scramble!.isSidewalk(alternate.x, alternate.z, radius)).toBe(true);
+});
 
 it('reaches the far sidewalk around a bend that conceals every landing at the first red step', () => {
   const bounds = { minX: -3, minZ: -3, maxX: 12, maxZ: 12 };

@@ -2,6 +2,7 @@ import type { PedestrianPortal, Point2 } from '../types';
 import type { AgentData } from './AgentData';
 import type { Navigation } from './Navigation';
 import type { SpatialGrid } from './SpatialGrid';
+import { canSeeWalker } from './PedestrianVisibility';
 
 const APPROACH_RADIUS = 8;
 const NOTICE_DISTANCE = 2.2;
@@ -83,37 +84,6 @@ export class DoorwayCourtesy {
     }
   }
 
-  private canSee(id: number, other: number): boolean {
-    const a = this.agents, s = a.current, x = s.x[id], z = s.z[id];
-    if (a.opacity[other] <= 0.05) return false;
-    const ox = s.x[other], oz = s.z[other], dx = ox - x, dz = oz - z;
-    const distance2 = dx * dx + dz * dz;
-    if (!distance2 || dx * Math.sin(s.heading[id]) + dz * Math.cos(s.heading[id]) < 0) return false;
-    if (!this.navigation.lineOfSight(x, z, ox, oz, 0)) return false;
-
-    const g = this.grid;
-    const first = g.cellAt(Math.min(x, ox) - CLEAR_SPOT_RADIUS, Math.min(z, oz) - CLEAR_SPOT_RADIUS);
-    const last = g.cellAt(Math.max(x, ox) + CLEAR_SPOT_RADIUS, Math.max(z, oz) + CLEAR_SPOT_RADIUS);
-    let examined = 0;
-    for (let row = Math.floor(first / g.columns); row <= Math.floor(last / g.columns); row++) {
-      for (let col = first % g.columns; col <= last % g.columns; col++) {
-        const cell = row * g.columns + col;
-        for (let k = g.offsets[cell]; k < g.offsets[cell + 1]; k++) {
-          if (++examined > MAX_NEIGHBORS) return false;
-          const blocker = g.indices[k];
-          if (blocker === id || blocker === other || a.opacity[blocker] <= 0.05) continue;
-          const bx = s.x[blocker] - x, bz = s.z[blocker] - z;
-          const t = (bx * dx + bz * dz) / distance2;
-          if (t <= 0 || t >= 1) continue;
-          // A nearer silhouette must cover the far person's projected width.
-          const coverage = a.radius[blocker] - t * a.radius[other];
-          if (coverage > 0 && (bx - t * dx) ** 2 + (bz - t * dz) ** 2 < coverage ** 2) return false;
-        }
-      }
-    }
-    return true;
-  }
-
   private conflictingPeer(id: number): number {
     const a = this.agents, s = a.current, g = this.grid;
     const x = s.x[id], z = s.z[id], cell = g.cells[id];
@@ -140,7 +110,7 @@ export class DoorwayCourtesy {
           const miss = lateral * futureSide < 0 ? 0 : Math.min(Math.abs(lateral), Math.abs(futureSide));
           if (miss > 0.70) continue;
           const score = 2 * this.inMouth[j] - miss - distance2 * 0.2;
-          if (score > bestScore && this.canSee(id, j)) { bestScore = score; peer = j; }
+          if (score > bestScore && canSeeWalker(a, this.navigation, g, id, j)) { bestScore = score; peer = j; }
         }
       }
     }
@@ -160,7 +130,7 @@ export class DoorwayCourtesy {
         for (let k = g.offsets[cell]; k < g.offsets[cell + 1]; k++) {
           if (++examined > MAX_NEIGHBORS) return false;
           const j = g.indices[k];
-          if (j !== id && (s.x[j] - x) ** 2 + (s.z[j] - z) ** 2 < CLEAR_SPOT_RADIUS ** 2 && this.canSee(id, j)) return false;
+          if (j !== id && (s.x[j] - x) ** 2 + (s.z[j] - z) ** 2 < CLEAR_SPOT_RADIUS ** 2 && canSeeWalker(a, this.navigation, g, id, j)) return false;
         }
       }
     }
@@ -205,7 +175,7 @@ export class DoorwayCourtesy {
         if (this.gate[id] >= 0 && !a.portalStage[id] && this.peerLife[id] === a.generation[peer]
           && this.gate[id] === this.gate[peer] && this.priority[peer] > this.priority[id]
           && age < MAX_YIELD && dx * dx + dz * dz < 2.5 ** 2
-          && (age < MIN_YIELD || ahead > -0.22) && this.canSee(id, peer)) continue;
+          && (age < MIN_YIELD || ahead > -0.22) && canSeeWalker(a, this.navigation, this.grid, id, peer)) continue;
         this.peer[id] = -1;
         this.resumeAfter[id] = time + RECOVERY;
       }

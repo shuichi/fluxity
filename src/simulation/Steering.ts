@@ -22,11 +22,14 @@ export interface CrossingPriority {
 
 /** Replace this boundary with ORCA without changing state, worker transport, or navigation. */
 export interface LocalAvoidance {
+  /** The most recent compute call chose to clear space for a walker leaving the road. */
+  readonly yieldingAtCurb?: boolean;
   compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale?: number, sidewalkOnly?: boolean): void;
 }
 
 export class Steering implements LocalAvoidance {
   candidateChecks = 0;
+  yieldingAtCurb = false;
   private readonly wallPush = { x: 0, z: 0 };
   constructor(private readonly scenario: Scenario, private readonly urban?: UrbanGeometry,
     private readonly doorwayCells?: Uint8Array, private readonly encounters?: EncounterState,
@@ -95,6 +98,7 @@ export class Steering implements LocalAvoidance {
   }
 
   compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale = 1, sidewalkOnly = false): void {
+    this.yieldingAtCurb = false;
     const state = agents.current;
     const x = state.x[id], z = state.z[id], dirX = direction.x, dirZ = direction.z;
     const preferredSpeed = agents.preferredSpeed[id] * speedScale;
@@ -155,6 +159,7 @@ export class Steering implements LocalAvoidance {
                   || this.navigation.lineOfSight(x, z, state.x[j], state.z[j], Math.min(agents.radius[id], agents.radius[j]) + 0.015))) {
                   const sign = side >= 0 ? 1 : -1;
                   yieldX = uz * sign; yieldZ = -ux * sign; yieldWeight = weight;
+                  this.yieldingAtCurb = !!clearingCurb;
                   if (clearingCurb) {
                     // Step diagonally back onto the sidewalk to open space at the lip of the curb.
                     const aside = blocked ? 0.55 : 0.8, back = blocked ? 0.85 : 0.6;

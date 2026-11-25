@@ -12,6 +12,7 @@ export class CrossingExits {
   private readonly landings: Landing[] = [];
   private readonly sidewalks: PolygonRegion[] | undefined;
   private readonly landingScores: Float64Array;
+  private readonly curb = { x: 0, z: 0, distance: 0 };
   private readonly intermediate = { x: 0, z: 0 };
   private search?: { parent: Int32Array; depth: Uint32Array; queue: Int32Array };
 
@@ -115,6 +116,19 @@ export class CrossingExits {
   /** Look across the same exit mouth for a less obstructed path inland. */
   reselect(x: number, z: number, radius: number, landingX: number, landingZ: number, out: Point2): boolean {
     const side = this.sidewalkAt(landingX, landingZ);
+    // At the chosen curb, try a short step inland before seeking a landing farther along it.
+    const polygon = this.sidewalks?.[side];
+    if (polygon?.nearest(x, z, 1.2, this.curb)) {
+      const inward = polygon.contains(x, z) ? 1 : -1;
+      const travel = (radius + 0.65) * inward - this.curb.distance;
+      const px = x + this.curb.x * travel, pz = z + this.curb.z * travel;
+      // A failed attempt at this same patch of sidewalk should reopen the other landing choices.
+      if (Math.hypot(px - landingX, pz - landingZ) > 0.05 && polygon.contains(px, pz, radius)
+        && this.nav.lineOfSight(x, z, px, pz, radius)) {
+        out.x = px; out.z = pz;
+        return true;
+      }
+    }
     let best = Infinity, chosen: Landing | undefined;
     for (const landing of this.landings) {
       if (landing.sidewalk !== side) continue;

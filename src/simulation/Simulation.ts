@@ -8,6 +8,7 @@ import { SpatialGrid } from './SpatialGrid';
 import { PortalFlow } from './PortalFlow';
 import { DoorwayClearance, doorwayRadius } from './DoorwayClearance';
 import { DoorwayCourtesy } from './DoorwayCourtesy';
+import { DoorwayHeadway } from './DoorwayHeadway';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
 import { TrafficSignal } from './TrafficSignal';
@@ -45,6 +46,7 @@ export class Simulation {
   private readonly portals: PortalFlow | undefined;
   private readonly doorways?: DoorwayClearance;
   private readonly courtesy?: DoorwayCourtesy;
+  private readonly headway?: DoorwayHeadway;
   stepCount = 0;
   time = 0;
   arrivals = 0;
@@ -70,7 +72,10 @@ export class Simulation {
       const doors = this.scenario.portals.filter(portal => portal.kind === 'door');
       if (doors.length) this.doorways = new DoorwayClearance(doors, this.grid, this.agents, this.navigation);
       this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways);
-      if (this.navigation.urban) this.courtesy = new DoorwayCourtesy(this.agents, this.navigation, this.grid, this.scenario.portals);
+      if (this.navigation.urban) {
+        this.courtesy = new DoorwayCourtesy(this.agents, this.navigation, this.grid, this.scenario.portals);
+        this.headway = new DoorwayHeadway(this.agents, this.grid, this.navigation, this.scenario.portals);
+      }
     }
     this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells, this.encounters, this.navigation, this.crossings);
     this.initialize();
@@ -224,7 +229,10 @@ export class Simulation {
     const scramble = this.navigation.scramble;
     const red = this.signal?.phase === 'red';
     this.grid.rebuild(read.x, read.z, a.count);
-    const courtesy = this.settings.avoidanceStrength > 0 ? this.courtesy : undefined;
+    const socialAvoidance = this.settings.avoidanceStrength > 0;
+    const courtesy = socialAvoidance ? this.courtesy : undefined;
+    const headway = socialAvoidance ? this.headway : undefined;
+    if (this.portals) this.portals.yieldForEmergence = socialAvoidance;
     courtesy?.update(this.time);
     if (this.avoidance instanceof Steering) this.avoidance.candidateChecks = 0;
     let totalSpeed = 0, stopped = 0, waiting = 0, crossing = 0;
@@ -240,7 +248,7 @@ export class Simulation {
       const passer = previousPeer >= 0 && a.generation[previousPeer] === this.encounters.gazeLife[i] ? previousPeer : -1;
       const passSide = this.encounters.passSide[i];
       this.encounters.advance(i, dt);
-      const yielding = !clearance && courtesy?.yielding(i);
+      const yielding = !clearance && courtesy?.yielding(i) && !this.portals?.steppingAside(i);
       if (this.portals) {
         if (!yielding && (!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
           this.crosswalkFlow?.reset(i);
@@ -259,6 +267,7 @@ export class Simulation {
       }
       if (!clearance && this.doorways?.cells[this.grid.cells[i]]) this.portals?.guideSidewalk(i, this.direction);
       const crossingPace = clearance?.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) ?? 1;
+      const steppingAside = this.portals?.steppingAside(i);
       const waitingAtMouth = !clearance && !yielding && this.portals?.waitingAtMouth;
       if (yielding) courtesy!.guide(i, this.direction);
       else if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
@@ -270,6 +279,9 @@ export class Simulation {
       const desiredSpeed = a.preferredSpeed[i] * speedScale;
       a.preferredVX[i] = this.direction.x * desiredSpeed; a.preferredVZ[i] = this.direction.z * desiredSpeed;
       this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity, speedScale, sidewalkOnly);
+      if (!clearance && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
+        headway?.limit(i, this.stepCount, this.time, this.direction, this.velocity);
+      }
       let ax = (this.velocity.x - read.vx[i]) / 0.3, az = (this.velocity.z - read.vz[i]) / 0.3;
       const acceleration = Math.hypot(ax, az);
       if (acceleration > 3.8) { ax *= 3.8 / acceleration; az *= 3.8 / acceleration; }
