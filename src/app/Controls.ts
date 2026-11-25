@@ -91,7 +91,7 @@ export class Controls {
               <button class="simulation-control" data-signal-mode="green" aria-pressed="false" title="Green: pedestrians may cross">Green</button>
               <button class="simulation-control" data-signal-mode="red" aria-pressed="false" title="Red: pedestrians wait at the crossing">Red</button>
             </div>
-            <p class="signal-help">Red holds new arrivals; people already crossing continue. Demo timing: 12s red / 35s green.</p>
+            <p class="signal-help">On red, people at the curb wait. Those who just stepped off turn back, and others hurry across. Auto runs 12s red and 35s green.</p>
           </details>
           <section class="control-section population-section">
             <div class="field-row"><span class="field-label" id="population-label">Population</span><span class="field-unit">AGENTS</span></div>

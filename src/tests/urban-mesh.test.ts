@@ -253,6 +253,27 @@ async function gpuHarness() {
   return { renderer: await WebGPURenderer.create(canvas as unknown as HTMLCanvasElement), buffers, textures, device, copyTextureToBuffer };
 }
 
+describe('pedestrian pose upload', () => {
+  it('interpolates head and shoulders together and snaps both when a slot changes life', async () => {
+    const { renderer, device } = await gpuHarness();
+    const previous = new Float32Array(SNAPSHOT_STRIDE);
+    previous[6] = 1; previous[12] = 1; previous[13] = -0.5; previous[14] = 0.75;
+    const current = previous.slice();
+    current[13] = 0.5; current[14] = -0.25;
+    const uploadedPose = () => {
+      device.queue.writeBuffer.mockClear();
+      renderer.render(previous, current, 1, 0.25, { quality: 'balanced', debug: false });
+      const upload = device.queue.writeBuffer.mock.calls.find(args => args[4] === 64)!;
+      const record = new Float32Array(upload[2], 0, 16);
+      return [record[15], record[11]];
+    };
+    expect(uploadedPose()).toEqual([-0.25, 0.5]);
+    current[11] = 1;
+    expect(uploadedPose()).toEqual([0.5, -0.25]);
+    renderer.destroy();
+  });
+});
+
 describe('pedestrian picking', () => {
   it('lets the inter-frame eye pose approach the threshold only until the near plane reaches the backing', async () => {
     const { renderer } = await gpuHarness();

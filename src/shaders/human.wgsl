@@ -57,7 +57,11 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
   var n = input.normal;
   let side = select(-1.0, 1.0, part == 4u || part == 6u || part == 8u || part == 10u || part == 12u);
   let cycle = sin(phase + select(0.0, 3.14159265, side > 0.0));
-  if (part >= 7u) {
+  if (part == 1u || part == 2u) {
+    let neck = vec3<f32>(0.0, 1.48, 0.0);
+    p = rotateY(p - neck, agent.extra.w) + neck;
+    n = rotateY(n, agent.extra.w);
+  } else if (part >= 7u) {
     let hip = vec3<f32>(side * 0.12, 0.91, 0.0);
     let knee = vec3<f32>(side * 0.12, 0.49, 0.0);
     let upperAngle = cycle * stride;
@@ -85,6 +89,14 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
     }
     p = aroundX(p, shoulder, armAngle);
     n = rotateX(n, armAngle);
+  }
+  if (part < 7u && agent.tint.w != 0.0) {
+    // A light contact rolls the upper body away from the other walker about the hips.
+    let angle = agent.tint.w * 0.21;
+    let c = cos(angle); let s = sin(angle);
+    let dy = p.y - 0.91;
+    p = vec3<f32>(c * p.x + s * dy, 0.91 - s * p.x + c * dy, p.z);
+    n = vec3<f32>(c * n.x + s * n.y, -s * n.x + c * n.y, n.z);
   }
   // The straight supporting leg determines pelvis height; bent swing legs lift naturally.
   let supportAngle = abs(sin(phase)) * stride;

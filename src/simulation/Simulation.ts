@@ -10,6 +10,10 @@ import { DoorwayClearance, doorwayRadius } from './DoorwayClearance';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
 import { TrafficSignal } from './TrafficSignal';
+import { PedestrianAttention } from './PedestrianAttention';
+import { EncounterState } from './EncounterState';
+import { CrossingClearance } from './CrossingClearance';
+import { CrosswalkFlow } from './CrosswalkFlow';
 
 const TAU = Math.PI * 2;
 const PALETTE = [
@@ -32,7 +36,11 @@ export class Simulation {
   readonly random: Random;
   readonly stats: SimulationStatistics = { meanSpeed: 0, congestion: 0 };
   readonly avoidance: LocalAvoidance;
+  readonly attention: PedestrianAttention;
+  readonly encounters: EncounterState;
   private readonly traffic: TrafficSignal | undefined;
+  private readonly crossings?: CrossingClearance;
+  private readonly crosswalkFlow?: CrosswalkFlow;
   private readonly portals: PortalFlow | undefined;
   private readonly doorways?: DoorwayClearance;
   stepCount = 0;
@@ -49,15 +57,19 @@ export class Simulation {
     this.agents = new AgentData(count); this.scenario = scenario ?? getScenario(config.scenario);
     this.random = new Random(config.seed); this.navigation = new Navigation(this.scenario);
     this.grid = new SpatialGrid(this.scenario.bounds, count);
+    this.attention = new PedestrianAttention(config.seed, this.agents, this.navigation, this.grid);
+    this.encounters = new EncounterState(count, config.seed);
     this.settings = { simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto' };
     this.traffic = this.navigation.scramble ? new TrafficSignal() : undefined;
+    if (this.traffic) this.crossings = new CrossingClearance(this.navigation, this.grid, count);
+    if (this.scenario.scramble?.crosswalks.length) this.crosswalkFlow = new CrosswalkFlow(this.navigation, count, config.seed);
     this.updateSettings(config);
     if (this.scenario.portals) {
       const doors = this.scenario.portals.filter(portal => portal.kind === 'door');
       if (doors.length) this.doorways = new DoorwayClearance(doors, this.grid, this.agents, this.navigation);
       this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways);
     }
-    this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells);
+    this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells, this.encounters, this.navigation, this.crossings);
     this.initialize();
   }
   updateSettings(settings: Partial<SimulationSettings>): void {
@@ -147,6 +159,7 @@ export class Simulation {
     this.grid.rebuild(state.x, state.z, a.count);
   }
   private assignTarget(id: number, targetId: number): void {
+    this.crosswalkFlow?.reset(id);
     if (this.portals) { this.portals.assignTarget(id, targetId); return; }
     const a = this.agents, target = this.scenario.targets[targetId], b = this.scenario.bounds;
     a.targetId[id] = targetId;
@@ -215,27 +228,46 @@ export class Simulation {
       // Use one clearance for classification, routing and integration. A person who
       // has only partly cleared the exit curb must keep moving onto the sidewalk.
       const radius = a.radius[i] + 0.015;
+      const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
+      const clearance = this.crossings && (this.crossings.clearing[i] || (red && !sidewalkOnly)) ? this.crossings : undefined;
       const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];
+      const previousPeer = this.encounters.gazeTarget[i];
+      const passer = previousPeer >= 0 && a.generation[previousPeer] === this.encounters.gazeLife[i] ? previousPeer : -1;
+      const passSide = this.encounters.passSide[i];
+      this.encounters.advance(i, dt);
       if (this.portals) {
-        if (this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
+        if ((!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
+          this.crosswalkFlow?.reset(i);
+          this.attention.settle(i, dt);
           const speed = this.writeMotion(i, dt, this.projected.x, this.projected.z);
           totalSpeed += speed;
           if (speed < a.preferredSpeed[i] * 0.45) stopped++;
           continue;
         }
-      } else if (tx * tx + tz * tz < 10) this.nextTarget(i);
-      this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius);
-      if (this.portals?.waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
-      // Existing crossers always clear the road. Only curb-side entry is gated by red.
-      const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
-      if (scramble && sidewalkOnly && scramble.brakeAtCurb(read.x[i], read.z[i], this.direction, radius)) waiting++;
-      a.preferredVX[i] = this.direction.x * a.preferredSpeed[i]; a.preferredVZ[i] = this.direction.z * a.preferredSpeed[i];
-      this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity);
+      } else if (!clearance && tx * tx + tz * tz < 10) this.nextTarget(i);
+      if (clearance) this.crosswalkFlow?.reset(i);
+      const followingTrack = !clearance && this.crosswalkFlow?.guide(i, a.generation[i],
+        read.x[i], read.z[i], a.targetId[i], radius, this.direction);
+      if (!followingTrack && (!clearance || !Number.isFinite(clearance.landingX[i]))) {
+        this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius);
+      }
+      if (!clearance && this.doorways?.cells[this.grid.cells[i]]) this.portals?.guideSidewalk(i, this.direction);
+      const crossingPace = clearance?.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) ?? 1;
+      const waitingAtMouth = !clearance && this.portals?.waitingAtMouth;
+      if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
+      const routeX = this.direction.x, routeZ = this.direction.z;
+      const waitingAtRed = sidewalkOnly && scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius);
+      if (waitingAtRed) waiting++;
+      const allowHesitation = !clearance && !waitingAtRed && !waitingAtMouth && !this.doorways?.cells[this.grid.cells[i]];
+      const speedScale = crossingPace * this.attention.update(i, dt, waitingAtRed, routeX, routeZ, allowHesitation, passer, passSide);
+      const desiredSpeed = a.preferredSpeed[i] * speedScale;
+      a.preferredVX[i] = this.direction.x * desiredSpeed; a.preferredVZ[i] = this.direction.z * desiredSpeed;
+      this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity, speedScale, sidewalkOnly);
       let ax = (this.velocity.x - read.vx[i]) / 0.3, az = (this.velocity.z - read.vz[i]) / 0.3;
       const acceleration = Math.hypot(ax, az);
       if (acceleration > 3.8) { ax *= 3.8 / acceleration; az *= 3.8 / acceleration; }
       let vx = read.vx[i] + ax * dt, vz = read.vz[i] + az * dt;
-      const velocityLength = Math.hypot(vx, vz), maxSpeed = a.preferredSpeed[i] * 1.12;
+      const velocityLength = Math.hypot(vx, vz), maxSpeed = a.preferredSpeed[i] * crossingPace * 1.12;
       // Smoothly decelerate on a lower UI speed limit, without a one-frame velocity jump.
       const speedLimit = Math.max(maxSpeed, Math.hypot(read.vx[i], read.vz[i]) - 3.8 * dt);
       if (velocityLength > speedLimit && velocityLength > 0) { vx *= speedLimit / velocityLength; vz *= speedLimit / velocityLength; }
@@ -262,14 +294,24 @@ export class Simulation {
         this.doorways.limit(i, x, z, dt, this.projected, sidewalkOnly);
         x = this.projected.x; z = this.projected.z;
       }
-      if (scramble && !scramble.isSidewalk(x, z, radius)) crossing++;
+      if (scramble) {
+        const onSidewalk = scramble.isSidewalk(Math.fround(x), Math.fround(z), radius);
+        if (!onSidewalk) crossing++;
+        this.crossings!.observeStep(i, read.x[i], read.z[i], radius, onSidewalk);
+      }
       const speed = this.writeMotion(i, dt, x, z);
       totalSpeed += speed;
       if (speed < a.preferredSpeed[i] * 0.45) stopped++;
     }
     if (this.portals && this.portals.transferCount) {
       this.arrivals += this.portals.transferCount;
-      this.portals.replaceArrivals(this.newPerson);
+      this.portals.replaceArrivals(id => {
+        this.newPerson(id);
+        this.attention.reset(id, a.generation[id]);
+        this.encounters.reset(id, a.generation[id]);
+        this.crossings?.reset(id);
+        this.crosswalkFlow?.reset(id);
+      });
     }
     a.swap(); this.stepCount++; this.time += dt;
     this.stats.meanSpeed = totalSpeed / a.count; this.stats.congestion = stopped / a.count;
@@ -285,6 +327,8 @@ export class Simulation {
       target[offset + 6] = a.scale[i]; target[offset + 7] = speed < 0.06 ? 0 : speed > 2.2 ? 2 : 1;
       target[offset + 8] = a.tint[i * 3]; target[offset + 9] = a.tint[i * 3 + 1]; target[offset + 10] = a.tint[i * 3 + 2];
       target[offset + 11] = a.generation[i]; target[offset + 12] = a.opacity[i];
+      target[offset + 13] = this.attention.headYaw[i];
+      target[offset + 14] = this.encounters.lean[i];
     }
   }
 }

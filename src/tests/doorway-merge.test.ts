@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, type PedestrianPortal, type Scenario } from '../types';
+import { DEFAULT_CONFIG, FIXED_DT, type PedestrianPortal, type Scenario } from '../types';
 import { Simulation } from '../simulation/Simulation';
-import { doorwayRadius } from '../simulation/DoorwayClearance';
+import { DoorwayClearance, doorwayRadius } from '../simulation/DoorwayClearance';
 import { Steering, type LocalAvoidance } from '../simulation/Steering';
 
 const door: PedestrianPortal = {
@@ -43,6 +43,32 @@ function advance(sim: Simulation, dt: number): void {
 }
 
 describe('pedestrians merging at a doorway', () => {
+  it('keeps a neighbor-clipped step inside the Shibuya walkable surface after Float32 storage', () => {
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, scenario: 'shibuya' });
+    const a = sim.agents, nav = sim.navigation;
+    const doors = sim.scenario.portals!.filter(portal => portal.kind === 'door');
+    const doorway = new DoorwayClearance(doors, sim.grid, a, nav);
+    // A tangential step from the seed-42 run, with one neighbor reserving part of its length.
+    a.scale.set([0.95718402, 1]);
+    a.radius.set([a.scale[0] * 0.25, 0.25]);
+    a.current.x.set([27.689278, 26.9716473]); a.current.z.set([40.19928, 40.2873955]);
+    sim.grid.rebuild(a.current.x, a.current.z, a.count);
+    const clearance = a.radius[0] + 0.015;
+    const x = a.current.x[0], z = a.current.z[0];
+    const tx = Math.fround(27.676447), tz = Math.fround(40.20113);
+    expect(nav.lineOfSight(x, z, tx, tz, clearance)).toBe(true);
+    expect(nav.isFree(a.current.x[1], a.current.z[1], a.radius[1] + 0.015)).toBe(true);
+
+    const step = { x: tx, z: tz };
+    expect(doorway.limit(0, tx, tz, FIXED_DT, step, false)).toBe(false);
+    a.next.x[0] = step.x; a.next.z[0] = step.z;
+    expect(nav.isFree(a.next.x[0], a.next.z[0], clearance)).toBe(true);
+    expect(nav.lineOfSight(a.next.x[0], a.next.z[0], tx, tz, clearance)).toBe(true);
+    expect(a.next.x[0]).toBeLessThan(x);
+    const gap = Math.hypot(a.current.x[1] - a.next.x[0], a.current.z[1] - a.next.z[0]);
+    expect(gap).toBeGreaterThanOrEqual(doorwayRadius(a.scale[0]) + doorwayRadius(a.scale[1]));
+  });
+
   it('waits behind a blocked threshold and enters once the pedestrian in front has passed', () => {
     let sidewalkIsMoving = false;
     const sim = twoWalkers([0, 1], {

@@ -10,7 +10,9 @@ interface Lane {
   x: number; z: number;
   endX: number; endZ: number;
   length: number;
-  queueX: number; queueZ: number; capture: number;
+  minOffset: number; maxOffset: number;
+  queueX: number; queueZ: number;
+  crowdStep: number; blockedLanding: number;
   outgoing: number; incoming: number; reserved: number;
   lastOut: number; lastIn: number;
   leaving: Set<number>;
@@ -22,8 +24,9 @@ interface Gate {
   entries: Lane[];
   admissions: number;
 }
-// Radius is at most 0.283 m. Leave room to advance without intersecting the preceding walker.
+// The maximum shoulder diameter at a doorway is 0.821 m.
 const HEADWAY = 0.83;
+const CAPTURE = 1.5;
 const LANE_PITCH = 0.615; // One maximum body diameter plus 5 cm between neighboring lanes.
 const enum Stage { Walking, Aligning, Leaving, Entering }
 
@@ -37,6 +40,8 @@ export class PortalFlow {
   private readonly reservation: (Lane | undefined)[];
   private readonly leader: Int32Array;
   private readonly alignment: Float32Array;
+  private readonly trackOffset: Float32Array;
+  private readonly onApproach: Uint8Array;
   private readonly transfers: Int32Array;
   private readonly retryAt: Int32Array;
   waitingAtMouth = false;
@@ -53,9 +58,9 @@ export class PortalFlow {
       if (!(length >= 0.5 && p.width >= 0.72) || !Number.isFinite(length + p.width)) {
         throw new Error(`Invalid passage dimensions for ${p.id}.`);
       }
-      // Passing pedestrians keep right. Single-lane gates alternate directions by reservation.
+      // Each lane must connect to the same reachable sidewalk as its destination.
       const lanes: Lane[] = [];
-      const span = Math.max(0, p.width - (p.kind === 'door' ? 0.83 : 0.6));
+      const span = Math.max(0, p.width - (p.kind === 'door' ? HEADWAY : 0.6));
       const pitch = p.kind === 'door' ? HEADWAY : LANE_PITCH;
       const count = Math.min(64, Math.floor(span / pitch) + 1);
       for (let k = 0; k < count; k++) {
@@ -63,42 +68,59 @@ export class PortalFlow {
         const ox = offset * dz / length, oz = -offset * dx / length;
         let x = p.approach.x + ox, z = p.approach.z + oz;
         if (!nav.isSpawnable(x, z, 0.34) || !nav.isReachable(x, z, index)) continue;
-        // Let normal sidewalk steering handle the outer apron as long as its
-        // path to the threshold is clear. Reserve the final two metres at a door.
+        // Place each mouth at the last shoulder-clear point on its authored
+        // approach. Curved pavement edges can cut neighboring lanes at different depths.
         let controlledLength = length;
-        if (p.kind === 'door' && length > 2) {
+        if (p.kind === 'door' && length > 2 && (!nav.urban || count < 4)) {
           const inset = (length - 2) / length, ax = x + dx * inset, az = z + dz * inset;
-          if (nav.isSpawnable(ax, az, 0.34) && nav.isReachable(ax, az, index) && nav.lineOfSight(x, z, ax, az, 0.34)) {
+          if (nav.isSpawnable(ax, az, 0.34) && nav.lineOfSight(x, z, ax, az, 0.34)) {
             x = ax; z = az; controlledLength = 2;
           }
-        }
-        let queueX = x, queueZ = z;
-        if (p.kind === 'door' && count > 1 && k >= Math.floor(count / 2)) {
-          // Queue on the departure side of the shop instead of gathering across
-          // the entrance. The first person then merges diagonally into the doorway.
-          const ux = dx / length, uz = dz / length;
-          const candidates = [3, 2, 1].map(offset => ({ x: x + uz * offset - ux * 1.1, z: z - ux * offset - uz * 1.1 }));
-          if (p.queueApproach) candidates.unshift(p.queueApproach);
-          for (const point of candidates) {
-            if (nav.isSpawnable(point.x, point.z, 0.42) && nav.isReachable(point.x, point.z, index)
-              && nav.lineOfSight(point.x, point.z, x, z, 0.34)) {
-              queueX = point.x; queueZ = point.z;
-              break;
-            }
+        } else if (p.kind === 'door' && length > 2) {
+          for (let advance = 0.25; advance <= length - 1; advance += 0.25) {
+            const ax = p.approach.x + ox + dx * advance / length;
+            const az = p.approach.z + oz + dz * advance / length;
+            if (!nav.isSpawnable(ax, az, 0.34) || !nav.lineOfSight(x, z, ax, az, 0.34)) break;
+            x = ax; z = az; controlledLength = length - advance;
           }
         }
-        const staged = queueX !== x || queueZ !== z;
-        const capture = staged ? Math.hypot(queueX - x, queueZ - z) + 0.85 : 1.5;
-        lanes.push({ portal: index, queueX, queueZ, capture, x, z, endX: p.end.x + ox, endZ: p.end.z + oz, length: controlledLength, retryAfter: 0,
-          outgoing: 0, incoming: 0, reserved: 0, lastOut: -1, lastIn: -1, leaving: new Set<number>(), transferOwner: -1 });
+        const q = p.queueApproach;
+        const queue = q && nav.isSpawnable(q.x, q.z, 0.42) && nav.lineOfSight(q.x, q.z, x, z, 0.34) ? q : undefined;
+        const queueX = queue?.x ?? x, queueZ = queue?.z ?? z;
+        // The public sidewalk handles queuing. Claim the threshold only when
+        // the walker is close enough to join it in about one stride.
+        lanes.push({
+          portal: index, x, z, endX: p.end.x + ox, endZ: p.end.z + oz, length: controlledLength,
+          queueX, queueZ, minOffset: 0, maxOffset: 0, crowdStep: -1, blockedLanding: 0,
+          outgoing: 0, incoming: 0, reserved: 0, lastOut: -1, lastIn: -1,
+          leaving: new Set<number>(), transferOwner: -1, retryAfter: 0,
+        });
       }
       if (!lanes.length) throw new Error(`No reachable sidewalk lane at ${p.id}.`);
-      const split = Math.floor(lanes.length / 2);
-      return {
-        exits: lanes.slice(p.entry === false ? 0 : split),
-        entries: p.entry === false ? [] : lanes.slice(0, Math.max(1, split)),
-        admissions: 0,
-      };
+      // People queue on the public side. A smaller bank of emergence lanes can
+      // serve the replenishment shared across all gates.
+      const split = Math.floor(lanes.length / (p.kind === 'door' && lanes.length >= 4 ? 3 : 2));
+      const central = p.kind === 'door' && lanes.length >= 4 && p.entry !== false;
+      const firstEntry = central ? Math.floor((lanes.length - split) / 2) : 0;
+      const entries = p.entry === false ? [] : lanes.slice(firstEntry, firstEntry + Math.max(1, split));
+      const exits = p.entry === false ? lanes : lanes.filter(lane => !entries.includes(lane));
+      if (!exits.length) exits.push(lanes[0]); // A narrow passage alternates directions.
+      if (p.kind === 'door' && exits.length >= 2) {
+        // Each intake bank is continuous. Someone already
+        // lined up with an opening can walk straight in on their own parallel
+        // track without first edging sideways to the exact centre of a lane.
+        for (let k = 0; k < exits.length; k++) {
+          const lane = exits[k];
+          for (const neighbor of [exits[k - 1], exits[k + 1]]) {
+            if (!neighbor) continue;
+            const offset = ((neighbor.endX - lane.endX) * dz - (neighbor.endZ - lane.endZ) * dx) / length;
+            if (Math.abs(offset) > HEADWAY * 1.7) continue;
+            lane.minOffset = Math.min(lane.minOffset, offset / 2);
+            lane.maxOffset = Math.max(lane.maxOffset, offset / 2);
+          }
+        }
+      }
+      return { exits, entries, admissions: 0 };
     });
     this.sharedEntry = this.gates.some(gate => gate.entries.some(lane => gate.exits.includes(lane)));
     this.stage = agents.portalStage;
@@ -109,15 +131,43 @@ export class PortalFlow {
     this.transfers = new Int32Array(agents.count);
     this.leader = new Int32Array(agents.count).fill(-1);
     this.alignment = new Float32Array(agents.count);
+    this.trackOffset = new Float32Array(agents.count);
+    this.onApproach = new Uint8Array(agents.count);
   }
 
   assignTarget(id: number, target: number): void {
     const exits = this.gates[target].exits;
     const lane = exits[this.random.int(exits.length)];
     this.destination[id] = lane;
+    this.onApproach[id] = 0;
     this.agents.targetId[id] = target;
     this.agents.targetX[id] = lane.queueX;
     this.agents.targetZ[id] = lane.queueZ;
+  }
+
+  /** Through traffic follows the public sidewalk around the entrance apron. */
+  guideSidewalk(id: number, direction: Point2): void {
+    if (!this.nav.urban) return;
+    const a = this.agents, x = a.current.x[id], z = a.current.z[id];
+    for (const gate of this.gates) {
+      const lane = gate.exits[0], portal = this.portals[lane.portal];
+      if (portal.kind !== 'door' || gate.exits.length < 2) continue;
+      const ex = x - portal.end.x, ez = z - portal.end.z;
+      if (Math.abs(ex) > 12 || Math.abs(ez) > 12) continue;
+      const ux = (lane.endX - lane.x) / lane.length, uz = (lane.endZ - lane.z) / lane.length;
+      const depth = -(ex * ux + ez * uz), tangent = ex * uz - ez * ux;
+      if (lane.portal === this.destination[id].portal || Math.abs(tangent) > portal.width / 2 + 7
+        || depth < 0 || depth > 6.1) continue;
+      const outward = Math.max(-0.2, Math.min(1.3, (5.6 - depth) * 0.65));
+      const side = Math.sign(direction.x * uz - direction.z * ux);
+      const dx = side * uz - outward * ux, dz = -side * ux - outward * uz;
+      const length = Math.hypot(dx, dz);
+      if (length < 0.1) continue;
+      const vx = dx / length, vz = dz / length;
+      if (!this.nav.isSpawnable(x + vx * 0.8, z + vz * 0.8, a.radius[id] + 0.015)) continue;
+      direction.x = vx; direction.z = vz;
+      return;
+    }
   }
 
   inPassage(id: number): boolean { return this.stage[id] !== Stage.Walking; }
@@ -129,11 +179,11 @@ export class PortalFlow {
     const dx = lane.endX - lane.x, dz = lane.endZ - lane.z;
     const x = this.agents.current.x[id] - lane.x, z = this.agents.current.z[id] - lane.z;
     const along = (x * dx + z * dz) / lane.length;
-    return along >= -0.001 && along <= lane.length + 0.001 && Math.abs(x * dz - z * dx) / lane.length < 0.001;
+    return along >= -0.001 && along <= lane.length + 0.001 && Math.abs((x * dz - z * dx) / lane.length - this.trackOffset[id]) < 0.001;
   }
 
   /** Pick the less crowded open lanes, with a preference for entries farther from the exit. */
-  private availableEntry(id: number, exit: Lane, grid: SpatialGrid, ready: boolean): Lane | undefined {
+  private availableEntry(id: number, exit: Lane, grid: SpatialGrid, ready: boolean, step: number): Lane | undefined {
     let best: Lane | undefined, bestScore = -Infinity;
     for (const gate of this.gates) {
       for (const lane of gate.entries) {
@@ -143,12 +193,41 @@ export class PortalFlow {
         if (occupancy >= capacity) continue;
         const distance = Math.hypot(exit.x - lane.x, exit.z - lane.z);
         const crowd = grid.counts[grid.cellAt(lane.x, lane.z)];
-        const score = 0.5 * distance / (distance + 40) + 2 / (2 + crowd)
+        const obstruction = ready && this.portals[lane.portal].kind === 'door' ? this.blockedLanding(lane, grid, step) : 0;
+        const score = -obstruction * 1.5 + 0.5 * distance / (distance + 40) + 2 / (2 + crowd)
           - occupancy / capacity - gate.admissions * 0.12 + this.random.range(0, 0.35);
         if (score > bestScore) { best = lane; bestScore = score; }
       }
     }
     return best;
+  }
+
+  /** Replacements have a choice of doors. Prefer a clear landing over adding
+   * another person behind a stationary crowd on a narrow sidewalk. */
+  private blockedLanding(lane: Lane, grid: SpatialGrid, step: number): number {
+    if (lane.crowdStep === step) return lane.blockedLanding;
+    lane.crowdStep = step;
+    const x = lane.x + 0.8 * (lane.x - lane.endX) / lane.length;
+    const z = lane.z + 0.8 * (lane.z - lane.endZ) / lane.length;
+    const first = grid.cellAt(x - 1.3, z - 1.3), last = grid.cellAt(x + 1.3, z + 1.3);
+    let blocked = 0, inspected = 0;
+    for (let row = Math.floor(first / grid.columns); row <= Math.floor(last / grid.columns); row++) {
+      for (let col = first % grid.columns; col <= last % grid.columns; col++) {
+        const cell = row * grid.columns + col;
+        for (let k = grid.offsets[cell]; k < grid.offsets[cell + 1]; k++) {
+          // An overcrowded approach is already a poor place to emerge.
+          if (++inspected > 96) {
+            lane.blockedLanding = Math.max(blocked, 8);
+            return lane.blockedLanding;
+          }
+          const id = grid.indices[k];
+          const dx = this.agents.current.x[id] - x, dz = this.agents.current.z[id] - z;
+          if (this.agents.stalledTime[id] > 0.5 && dx * dx + dz * dz < 1.6) blocked++;
+        }
+      }
+    }
+    lane.blockedLanding = blocked;
+    return blocked;
   }
 
   /** Distance down the passage, measured from the public sidewalk. */
@@ -196,57 +275,87 @@ export class PortalFlow {
   }
 
   private reservePassages(id: number, x: number, z: number, step: number, grid: SpatialGrid): boolean {
-    const a = this.agents;
-    const lane = this.destination[id];
-    // Require proximity to the actual lane mouth, with a clear swept approach from the same sidewalk.
-    const staged = lane.queueX !== lane.x || lane.queueZ !== lane.z;
-    const capture = lane.capture;
-    if (Math.abs(x - lane.x) > capture || Math.abs(z - lane.z) > capture
-      || Math.hypot(x - lane.x, z - lane.z) > capture) return false;
-    this.waitingAtMouth = staged ? Math.hypot(x - lane.queueX, z - lane.queueZ) < 0.38 : true;
-    if (step < this.retryAt[id]) return false;
-    if (a.preferredSpeed[id] <= 0 || lane.incoming + lane.reserved > 0 || step < lane.retryAfter) return false;
-    // Someone reaching the mouth from the side may already be partway along
-    // the public apron. Join the lane beside them without an outward-then-inward turn.
-    let join = Math.max(0, Math.min(lane.length, this.progress(lane, id)));
-    const door = this.portals[lane.portal].kind === 'door';
-    if (door) {
-      // While someone crosses the queue, all other arrivals wait. Check this
-      // before querying sidewalk geometry for the next joining position.
-      for (const other of lane.leaving) if (this.stage[other] === Stage.Aligning) return false;
-      // Merge diagonally toward the threshold, using only the reachable sidewalk
-      // before the facade. A lateral alignment at the same depth cuts across the queue.
-      const unitX = (lane.endX - lane.x) / lane.length, unitZ = (lane.endZ - lane.z) / lane.length;
-      for (let advance = 1; advance > 0; advance -= 0.25) {
-        const candidate = Math.min(lane.length, join + advance);
-        const jx = lane.x + unitX * candidate, jz = lane.z + unitZ * candidate;
-        if (this.nav.isSpawnable(jx, jz, a.radius[id] + 0.015)
-          && this.nav.lineOfSight(x, z, jx, jz, a.radius[id] + 0.015)) { join = candidate; break; }
+    const assigned = this.destination[id];
+    const gate = this.gates[assigned.portal];
+    const p = this.portals[assigned.portal], door = p.kind === 'door';
+    const reach = door ? p.width * 0.5 + 3 : CAPTURE;
+    const nearby = Math.abs(x - assigned.x) <= reach && Math.abs(z - assigned.z) <= reach;
+    if (!this.onApproach[id] && (assigned.queueX !== assigned.x || assigned.queueZ !== assigned.z)) {
+      const dx = x - assigned.queueX, dz = z - assigned.queueZ;
+      if (dx * dx + dz * dz < 1 || (nearby && this.progress(assigned, id) > -Math.hypot(assigned.queueX - assigned.x, assigned.queueZ - assigned.z)
+        && this.nav.lineOfSight(x, z, assigned.x, assigned.z, this.agents.radius[id] + 0.015))) {
+        this.agents.targetX[id] = assigned.x; this.agents.targetZ[id] = assigned.z;
+        this.onApproach[id] = 1;
       }
     }
+    if (!nearby) return false;
+    this.waitingAtMouth = Math.hypot(x - assigned.x, z - assigned.z) < (door ? 0.35 : CAPTURE);
+    if (step < this.retryAt[id] || this.agents.preferredSpeed[id] <= 0) return false;
+    if (!door || gate.exits.length === 1) return this.tryLane(id, assigned, x, z, step, grid);
+    // Admit the pedestrian at the front on the track already beneath their
+    // feet, even when they originally approached a different part of the door.
+    let nearest = assigned, least = Infinity;
+    for (const lane of gate.exits) {
+      const lateral = ((x - lane.x) * (lane.endZ - lane.z) - (z - lane.z) * (lane.endX - lane.x)) / lane.length;
+      const correction = Math.abs(lateral - Math.max(lane.minOffset, Math.min(lane.maxOffset, lateral)));
+      if (correction < least) { least = correction; nearest = lane; }
+    }
+    if (this.tryLane(id, nearest, x, z, step, grid)) return true;
+    for (const lane of gate.exits) {
+      if (lane !== nearest && this.tryLane(id, lane, x, z, step, grid)) return true;
+    }
+    return false;
+  }
+
+  private tryLane(id: number, lane: Lane, x: number, z: number, step: number, grid: SpatialGrid): boolean {
+    const a = this.agents, door = this.portals[lane.portal].kind === 'door';
+    if (lane.incoming + lane.reserved > 0 || step < lane.retryAfter) return false;
+    const depth = this.progress(lane, id);
+    const along = door ? Math.max(0, Math.min(1, depth / lane.length)) : 0;
+    const mouthX = lane.x + (lane.endX - lane.x) * along, mouthZ = lane.z + (lane.endZ - lane.z) * along;
+    if (Math.abs(x - mouthX) > CAPTURE || Math.abs(z - mouthZ) > CAPTURE
+      || (x - mouthX) ** 2 + (z - mouthZ) ** 2 > CAPTURE ** 2) return false;
+    // Someone reaching the mouth from the side may already be partway along
+    // the public apron. Join the lane beside them without an outward-then-inward turn.
+    let join = Math.max(0, Math.min(lane.length, depth)), offset = 0;
+    const ux = (lane.endX - lane.x) / lane.length, uz = (lane.endZ - lane.z) / lane.length;
     let ahead = lane.outgoing ? lane.lastOut : -1;
     if (door) {
-      // A sidewalk walker may join from the side already ahead of the queue.
-      for (const other of lane.leaving) {
-        const gap = this.progress(lane, other) - join;
-        if (gap >= -0.05 && gap < HEADWAY) return false;
+      const lateral = (x - lane.x) * uz - (z - lane.z) * ux;
+      offset = Math.max(lane.minOffset, Math.min(lane.maxOffset, lateral));
+      if (Math.abs(lateral - offset) > 0.025) {
+        // Adjacent people can approach the broad threshold together. The
+        // swept shoulder checks settle their shared space on every tick.
+        if (lane.minOffset === lane.maxOffset) {
+          for (const other of lane.leaving) if (this.stage[other] === Stage.Aligning) return false;
+        }
+        // Aim slightly ahead so an arrival on the apron joins from the side
+        // without having to turn back into the queue.
+        join = 0;
+        for (let advance = 0.6; advance >= 0; advance -= 0.2) {
+          const progress = Math.min(lane.length, Math.max(0, depth + advance));
+          const jx = lane.x + ux * progress + offset * uz, jz = lane.z + uz * progress - offset * ux;
+          if (this.nav.isSpawnable(jx, jz, a.radius[id] + 0.015)
+            && this.nav.lineOfSight(x, z, jx, jz, a.radius[id] + 0.015)) { join = progress; break; }
+        }
       }
       ahead = -1;
     } else if (ahead >= 0 && (this.stage[ahead] !== Stage.Leaving || this.progress(lane, ahead) - join < HEADWAY)) {
       return false;
     }
     const fraction = join / lane.length;
-    const joinX = lane.x + (lane.endX - lane.x) * fraction;
-    const joinZ = lane.z + (lane.endZ - lane.z) * fraction;
-    if (!this.nav.isSpawnable(joinX, joinZ, a.radius[id] + 0.015)
-      || !this.nav.lineOfSight(x, z, joinX, joinZ, a.radius[id] + 0.015)) {
+    const joinX = lane.x + (lane.endX - lane.x) * fraction + offset * uz;
+    const joinZ = lane.z + (lane.endZ - lane.z) * fraction - offset * ux;
+    if (!this.nav.isFree(joinX, joinZ, a.radius[id] + 0.015)
+      || !this.nav.lineOfSight(x, z, joinX, joinZ, a.radius[id] + 0.015)
+      || (this.nav.scramble && !this.nav.scramble.isSidewalk(joinX, joinZ, a.radius[id] + 0.015))) {
       this.waitingAtMouth = false;
       return false;
     }
     // A shared single-file entrance must be reserved before moving in the
     // opposite direction. Independent lanes claim a landing only at the final steps.
     if (this.sharedEntry) {
-      const entry = this.availableEntry(id, lane, grid, false);
+      const entry = this.availableEntry(id, lane, grid, false, step);
       if (!entry) {
         lane.retryAfter = step + 5;
         return false;
@@ -259,6 +368,7 @@ export class PortalFlow {
     lane.outgoing++;
     this.passage[id] = lane;
     this.alignment[id] = fraction;
+    this.trackOffset[id] = offset;
     this.stage[id] = Stage.Aligning;
     a.stalledTime[id] = 0;
     return true;
@@ -293,8 +403,9 @@ export class PortalFlow {
     const lane = this.passage[id]!;
     const outward = this.stage[id] === Stage.Leaving;
     const fraction = outward ? 1 : this.stage[id] === Stage.Aligning ? this.alignment[id] : 0;
-    const tx = lane.x + (lane.endX - lane.x) * fraction;
-    const tz = lane.z + (lane.endZ - lane.z) * fraction;
+    const offset = this.trackOffset[id] / lane.length;
+    const tx = lane.x + (lane.endX - lane.x) * fraction + offset * (lane.endZ - lane.z);
+    const tz = lane.z + (lane.endZ - lane.z) * fraction - offset * (lane.endX - lane.x);
     const dx = tx - x, dz = tz - z, remaining = Math.hypot(dx, dz);
     a.preferredVX[id] = remaining > 0.001 ? dx * a.preferredSpeed[id] / remaining : 0;
     a.preferredVZ[id] = remaining > 0.001 ? dz * a.preferredSpeed[id] / remaining : 0;
@@ -322,7 +433,7 @@ export class PortalFlow {
         const visibleEnd = this.portals[lane.portal].kind === 'door' ? Math.max(0.1, lane.length - 1.15) : Math.max(0.15, lane.length - 3);
         if (progress + distance >= visibleEnd && entry?.transferOwner !== id) {
           if (!entry) {
-            entry = this.availableEntry(id, lane, grid, true);
+            entry = this.availableEntry(id, lane, grid, true, step);
             if (entry) this.reserveEntry(id, entry);
           }
           if (entry && this.canAppear(id, entry)) entry.transferOwner = id;
@@ -338,17 +449,22 @@ export class PortalFlow {
     const portal = this.portals[lane.portal];
     const walkedIn = lane.length - remaining;
     const mergeDistance = Math.min(2, Math.hypot(portal.end.x - portal.approach.x, portal.end.z - portal.approach.z) * 0.5);
-    if (this.stage[id] === Stage.Entering && a.opacity[id] >= 0.9999 && (walkedIn >= mergeDistance || portal.kind === 'door' && a.stalledTime[id] > 0.3)
-      && this.nav.isSpawnable(x, z, 0.34) && this.nav.lineOfSight(x, z, lane.x, lane.z, 0.34)) {
-      this.rejoinSidewalk(id, lane);
-      return false;
+    const clearance = a.radius[id] + 0.015;
+    if (this.stage[id] === Stage.Entering && a.opacity[id] >= 0.9999
+      && (walkedIn >= mergeDistance || portal.kind === 'door' && a.stalledTime[id] > 0.3)) {
+      const onSidewalk = this.nav.scramble ? this.nav.scramble.isSidewalk(x, z, clearance) : this.nav.isFree(x, z, clearance);
+      if (onSidewalk && this.nav.lineOfSight(x, z, lane.x, lane.z, clearance)) {
+        this.rejoinSidewalk(id, lane);
+        return false;
+      }
     }
     const onApron = this.stage[id] === Stage.Aligning || (outward ? lane.length - remaining : remaining) < 1.5;
     const throughDoor = this.portals[lane.portal].kind === 'door' && this.doorways;
     const clear = throughDoor ? throughDoor.limit(id, result.x, result.z, dt, result, this.stage[id] === Stage.Aligning ? false : undefined)
       : !onApron || this.clearStep(id, result.x, result.z, grid);
     if (!clear) {
-      if (this.stage[id] === Stage.Aligning && a.stalledTime[id] >= 0.6) {
+      if (a.stalledTime[id] >= 0.6 && (this.stage[id] === Stage.Aligning
+        || outward && !this.reservation[id] && this.nav.urban && this.nav.scramble!.isSidewalk(x, z, a.radius[id] + 0.015))) {
         // The sidewalk crowd can close a gap while a walker lines up. Yield with
         // ordinary steering and let another walker use the opening from a clear angle.
         const entry = this.reservation[id];
@@ -357,16 +473,16 @@ export class PortalFlow {
         this.unlinkExit(id, lane);
         this.reservation[id] = this.passage[id] = undefined;
         this.stage[id] = Stage.Walking;
-        this.waitingAtMouth = true;
+        this.waitingAtMouth = false;
         return false;
       }
       if (!throughDoor) { result.x = x; result.z = z; }
       reached = false;
     }
     if (this.stage[id] !== Stage.Aligning) {
-      const fromEnd = Math.hypot(lane.endX - result.x, lane.endZ - result.z);
+      const fromEnd = lane.length - ((result.x - lane.x) * (lane.endX - lane.x) + (result.z - lane.z) * (lane.endZ - lane.z)) / lane.length;
       const fade = this.portals[lane.portal].kind === 'street' ? Math.min(3, lane.length) : 0.35;
-      const t = Math.min(1, fromEnd / fade);
+      const t = Math.min(1, Math.max(0, fromEnd / fade));
       a.opacity[id] = t * t * (3 - 2 * t);
     }
     if (reached) {
@@ -393,10 +509,11 @@ export class PortalFlow {
       entry.lastIn = id;
       entry.incoming++;
       this.stage[id] = Stage.Entering;
+      this.trackOffset[id] = 0;
       this.passage[id] = entry;
       this.reservation[id] = undefined;
-      newPerson(id);
       a.generation[id] = (a.generation[id] + 1) % 16777216; // Exactly representable in a float snapshot.
+      newPerson(id);
       const dx = (entry.x - entry.endX) / entry.length, dz = (entry.z - entry.endZ) / entry.length;
       write.x[id] = entry.endX; write.z[id] = entry.endZ;
       write.vx[id] = dx * a.preferredSpeed[id]; write.vz[id] = dz * a.preferredSpeed[id];

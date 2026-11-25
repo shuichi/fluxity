@@ -71,10 +71,12 @@ export class DoorwayClearance {
     if (fraction >= 1) return true;
     result.x = sx + fraction * vx; result.z = sz + fraction * vz;
     if (sidewalkOnly === undefined) return false;
+    const clearance = a.radius[id] + 0.015;
 
     // Project the sidewalk step onto the allowed half-planes. On contact with a
     // new boundary, slide along it as far as the preceding neighbors permit.
     let mx = vx, mz = vz;
+    let canSlide = true;
     for (let k = 0; k < count; k++) {
       const nx = this.normalsX[k], nz = this.normalsZ[k], gap = this.gaps[k];
       if (nx * mx + nz * mz <= gap + 1e-9) continue;
@@ -87,17 +89,33 @@ export class DoorwayClearance {
         if (along > 1e-10) max = Math.min(max, remaining / along);
         else if (along < -1e-10) min = Math.max(min, remaining / along);
       }
-      if (min > max) return false; // Keep the validated straight step on roundoff.
+      if (min > max) { canSlide = false; break; }
       const slide = Math.max(min, Math.min(max, vx * tx + vz * tz));
       mx = bx + tx * slide; mz = bz + tz * slide;
     }
     const px = Math.fround(sx + mx), pz = Math.fround(sz + mz);
-    const clearance = a.radius[id] + 0.015, nav = this.navigation;
-    const withinSidewalk = !sidewalkOnly || (nav.scramble?.isSidewalk(px, pz, clearance)
-      && (!nav.urban || nav.urban.sidewalks.lineInside(sx, sz, px, pz, clearance)));
-    if (withinSidewalk && nav.isFree(px, pz, clearance) && nav.lineOfSight(sx, sz, px, pz, clearance)) {
-      result.x = px; result.z = pz;
+    if (canSlide && this.permitsStep(sx, sz, px, pz, clearance, sidewalkOnly)) {
+      result.x = px; result.z = pz; return false;
     }
+    // At a facade, a shortened straight step may round outside the polygon
+    // even when the requested step and the unrounded endpoint are both valid.
+    // Shortening on the same segment preserves every neighbor reservation.
+    if (this.permitsStep(sx, sz, Math.fround(result.x), Math.fround(result.z), clearance, sidewalkOnly)) return false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      fraction *= 0.5;
+      const fx = Math.fround(sx + fraction * vx), fz = Math.fround(sz + fraction * vz);
+      if (this.permitsStep(sx, sz, fx, fz, clearance, sidewalkOnly)) {
+        result.x = fx; result.z = fz; return false;
+      }
+    }
+    result.x = sx; result.z = sz;
     return false;
+  }
+
+  private permitsStep(sx: number, sz: number, x: number, z: number, clearance: number, sidewalkOnly: boolean): boolean {
+    const nav = this.navigation;
+    return (!sidewalkOnly || (!!nav.scramble?.isSidewalk(x, z, clearance)
+      && (!nav.urban || nav.urban.sidewalks.lineInside(sx, sz, x, z, clearance))))
+      && nav.isFree(x, z, clearance) && nav.lineOfSight(sx, sz, x, z, clearance);
   }
 }

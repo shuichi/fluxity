@@ -17,6 +17,7 @@ export interface PersonPose {
   x: number;
   z: number;
   heading: number;
+  headYaw: number;
   scale: number;
 }
 
@@ -136,7 +137,8 @@ export class Camera {
     if (person) {
       this.drag = null;
       vec3.set(this.position, person.x, 1.65 * person.scale, person.z);
-      vec3.set(this.gaze, person.x + Math.sin(person.heading), this.position[1], person.z + Math.cos(person.heading));
+      const gazeHeading = person.heading + person.headYaw;
+      vec3.set(this.gaze, person.x + Math.sin(gazeHeading), this.position[1], person.z + Math.cos(gazeHeading));
       mat4.lookAt(this.view, this.position, this.gaze, [0, 1, 0]);
     } else {
       const horizontal = Math.cos(this.elevation) * this.distance;

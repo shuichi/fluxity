@@ -7,7 +7,7 @@ import { Navigation } from '../simulation/Navigation';
 import { PolygonRegion } from '../simulation/UrbanGeometry';
 
 describe('Shibuya entrances', () => {
-  it('routes both lanes across reachable sidewalks and only crosses a wall at an authored door', () => {
+  it('keeps the full passage width on reachable pavement up to its authored facade', () => {
     const nav = new Navigation(shibuya), map = shibuya.urbanMap!;
     const buildings = new PolygonRegion(map.buildingFootprints), roads = new PolygonRegion(map.roads);
     const portals = shibuya.portals!;
@@ -20,8 +20,9 @@ describe('Shibuya entrances', () => {
       }
       const length = Math.hypot(end.x - approach.x, end.z - approach.z);
       const dx = (end.x - approach.x) / length, dz = (end.z - approach.z) / length;
-      for (const lane of [0, -1, 1]) {
-        const offset = lane * (portal.width / 2 - 0.34);
+      const steps = Math.ceil(portal.width / 0.25);
+      for (let k = 0; k <= steps; k++) {
+        const offset = (2 * k / steps - 1) * (portal.width / 2 - 0.34);
         const ax = approach.x - dz * offset, az = approach.z + dx * offset;
         expect(nav.isSpawnable(ax, az, 0.34), portal.id).toBe(true);
         expect(nav.isReachable(ax, az, index), portal.id).toBe(true);

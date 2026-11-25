@@ -228,6 +228,19 @@ export class UrbanGeometry {
       qx = Math.fround(px); qz = Math.fround(pz);
       if (region.lineInside(x, z, qx, qz, radius)) { result.x = qx; result.z = qz; return; }
     }
+    // An older motion state may already be a Float32 rounding unit beyond the
+    // permitted clearance. Spend part of this step moving back inside before
+    // attempting another sweep from that position.
+    const roundoff = Math.max(1, Math.abs(x), Math.abs(z)) * 2 ** -23;
+    const clearance = Math.max(0, radius - EPSILON);
+    if (maxTravel > 0 && region.nearest(x, z, clearance, this.boundary)
+      && clearance - this.boundary.distance <= roundoff && region.contains(x, z)) {
+      const inset = clearance - this.boundary.distance + roundoff;
+      const px = Math.fround(x + this.boundary.x * inset), pz = Math.fround(z + this.boundary.z * inset);
+      if (Math.hypot(px - x, pz - z) <= maxTravel && region.contains(px, pz, radius)) {
+        result.x = px; result.z = pz; return;
+      }
+    }
     // A tight concave corner may leave no representable safe step.
     result.x = x; result.z = z;
   }

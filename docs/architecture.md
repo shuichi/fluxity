@@ -59,13 +59,19 @@ Shibuya is the default scene, with 1,000 people. `Scenario.urbanMap` contains un
 
 The automatic cycle uses 12 simulation seconds of red followed by 35 of green. These are demonstration timings, not the real Shibuya signal schedule. Manual Green/Red hold that state without resetting people or simulation time; returning to Auto rejoins the simulation-clock cycle. Pause and time scaling therefore affect the automatic cycle consistently.
 
-Red gates **new entry** from the sidewalk. Approaching agents decelerate, while local avoidance can still make room laterally. Agents already inside a crossing continue toward a sidewalk. A geometric final constraint prevents neighbor avoidance from pushing new arrivals into the road or anyone outside pedestrian surfaces. Boundary projection preserves tangential motion so people do not become pinned to the edge of a zebra. Heavy queues can still delay people clearing a crossing.
+`CrosswalkFlow` follows the destination field to identify the next marked crossing. Across its width it samples parallel paths that connect the two sidewalks and leave enough room for a walker. An approaching pedestrian chooses a lateral position and keeps it through the crossing. Where two markings meet, the part of the approach before the chosen marking must stay on the sidewalk. A pedestrian already on another marking waits to pick the next crossing track. One-way flows can use the whole available width. When streams meet, each increasingly favors its right-hand side according to the number of walkers approaching from the opposite direction. Local avoidance can still move a walker sideways. Red-signal clearance takes priority.
+
+Red gates **new entry** from the sidewalk. On the first red movement step, a walker within 1.5 m of their recorded entry can turn back to that sidewalk. Other crossers aim for a reachable landing ahead and increase their preferred pace up to 1.7×. The boost tapers to zero for people already jogging at 2.8 m/s or faster. The pedestrian keeps their trip destination and commits to clearing the road even if green resumes. If progress stalls, the walker looks for a less crowded landing along the same exit. A bend in the crossing can require an intermediate waypoint on the navigation grid. People in the way step back or sideways on the sidewalk. If the first row cannot make space, walkers farther back also yield. The signal counts crossers until their whole body clears the curb.
 
 The worker sends the confirmed `SignalState` (phase, remaining time, waiting and crossing counts) as snapshot metadata. Settings can publish a same-step snapshot while paused; exhausted pools mark a pending update and publish when a recycled buffer arrives. The UI and GPU signal lamps use this confirmed state. Lamps are vertex material IDs driven by the existing scene uniform, with no additional draw call or per-change geometry creation.
 
+## Storefront entrances
+
+The five Shibuya storefronts use their mapped facade openings for both the rendered doors and the walking lanes. The demo openings range from 5.2 to 8.4 m wide. People going into a building approach the outer lanes from either side. People emerging from a building use the middle lanes and rejoin ordinary steering once their body has cleared the facade and the public sidewalk is reachable. The choice of a new pedestrian’s exit also takes account of slow-moving people directly outside the opening. A walker blocked while joining a lane on the sidewalk can release their place and approach again. Replacements still enter the scene only after another pedestrian has walked through a different portal.
+
 ## Snapshot ABI
 
-Each pedestrian slot occupies **13 Float32 values / 52 bytes**.
+Each pedestrian slot occupies **15 Float32 values / 60 bytes**.
 
 | Float offset | Value |
 | --- | --- |
@@ -79,8 +85,16 @@ Each pedestrian slot occupies **13 Float32 values / 52 bytes**.
 | 8, 9, 10 | Clothing tint RGB |
 | 11 | Life generation, incremented when a slot is reused for a new trip |
 | 12 | Visibility through the entrance or exit passage (0–1) |
+| 13 | Head yaw relative to the torso, in radians. The first-person view follows the same interpolated angle. |
+| 14 | Signed shoulder reaction to contact (−1 to 1). Positive values lean to the pedestrian's right. |
 
 This is a CPU transfer format. The renderer repacks visible instances into its WGSL-aligned storage layout. GPU structures use 16-byte lanes; the corresponding TypeScript stride and WGSL members are defined together in the renderer. No per-agent GPU resources or draw calls are created.
+
+## Attention and encounters
+
+`PedestrianAttention` seeds each life's gaze and familiarity independently of trip generation. A curb wait schedules its next glance in simulation seconds. The pedestrian can look toward a crossing, its signal or a passing walker. A staggered route check permits a brief slowdown when two walkable directions around an obstruction have comparable remaining cost to the same destination. The head can turn while the body stands still.
+
+`Steering` scores continuing, passing on either side and yielding using nearby walkers' projected closest approaches. It tests the preferred maneuver against the walkable surface and carries the choice across ticks. A mild contact with sufficient measured closing speed produces a brief torso roll. The response rearms after leaving the contact cluster. Doorway movement, signal restrictions and final geometry constraints retain priority. A replacement pedestrian starts with fresh attention and encounter state.
 
 ## Extension points
 

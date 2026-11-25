@@ -44,13 +44,16 @@ describe('rendering data contracts', () => {
     const previous = new Float32Array(SNAPSHOT_STRIDE);
     const current = previous.slice();
     current[0] = 2; current[1] = 3; current[2] = Math.PI / 2; current[6] = 1.1;
-    const pose = { x: 0, z: 0, heading: 0, scale: 1 };
+    previous[13] = -0.5; current[13] = 0.5;
+    const pose = { x: 0, z: 0, heading: 0, headYaw: 0, scale: 1 };
     expect(samplePersonPose(pose, previous, current, 0, 0.25)).toBe(0.25);
     expect(pose.x).toBe(0.5);
+    expect(pose.headYaw).toBe(-0.25);
     current[11] = 2;
     expect(samplePersonPose(pose, previous, current, 0, 0.25)).toBe(1);
     expect(pose.x).toBe(2); expect(pose.z).toBe(3);
     expect(pose.heading).toBeCloseTo(Math.PI / 2);
+    expect(pose.headYaw).toBe(0.5);
     expect(pose.scale).toBeCloseTo(1.1);
   });
 });

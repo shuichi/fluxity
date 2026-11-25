@@ -42,6 +42,8 @@ describe('deterministic, finite SoA simulation', () => {
   });
   it('packs a consistent snapshot with life generations, opacity, appearance and actual velocity', () => {
     const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 32 }); simulation.step();
+    simulation.attention.headYaw[4] = -0.48;
+    simulation.encounters.lean[4] = 0.32;
     const data = snapshot(simulation), a = simulation.agents;
     expect(() => simulation.writeSnapshot(new Float32Array(10))).toThrow(RangeError);
     for (let i = 0; i < a.count; i++) {
@@ -49,6 +51,8 @@ describe('deterministic, finite SoA simulation', () => {
       expect(data[offset]).toBe(a.current.x[i]); expect(data[offset + 1]).toBe(a.current.z[i]);
       expect(data[offset + 3]).toBeCloseTo(Math.hypot(a.current.vx[i], a.current.vz[i]), 5);
       expect(data[offset + 5]).toBe(a.appearance[i]);
+      expect(data[offset + 13]).toBe(simulation.attention.headYaw[i]);
+      expect(data[offset + 14]).toBe(simulation.encounters.lean[i]);
       expect(data[offset + 11]).toBe(0); expect(data[offset + 12]).toBe(1);
       expect(data[offset + 6]).toBeGreaterThan(0.8);
     }

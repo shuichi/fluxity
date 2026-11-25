@@ -34,7 +34,7 @@ export class WebGPURenderer {
   private readonly sceneGroup: GPUBindGroup;
   private readonly instanceGroup: GPUBindGroup;
   private readonly instances: InstanceBuffer;
-  private readonly followedPose: PersonPose = { x: 0, z: 0, heading: 0, scale: 1 };
+  private readonly followedPose: PersonPose = { x: 0, z: 0, heading: 0, headYaw: 0, scale: 1 };
   private doors: PedestrianPortal[] = [];
   private readonly uniforms = new Float32Array(32);
   private readonly humans: Mesh[] = [];

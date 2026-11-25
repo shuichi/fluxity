@@ -60,14 +60,14 @@ describe('pedestrian viewpoint', () => {
     camera.update(1.5);
     const originalView = Array.from(camera.viewProjection);
     const originalPosition = Array.from(camera.position);
-    camera.update(1.5, { x: -1, z: 7, scale: 1.2, heading: Math.PI / 2 });
+    camera.update(1.5, { x: -1, z: 7, scale: 1.2, heading: Math.PI / 4, headYaw: Math.PI / 4 });
     expect(camera.position[0]).toBe(-1);
     expect(camera.position[1]).toBeCloseTo(1.65 * 1.2);
     expect(camera.position[2]).toBe(7);
     const ahead = vec3.transformMat4(vec3.create(), [2, camera.position[1], 7], camera.view);
     expect(ahead[0]).toBeCloseTo(0);
     expect(ahead[2]).toBeCloseTo(-3);
-    camera.update(1.5, { x: 4, z: -2, scale: 1.2, heading: 0 });
+    camera.update(1.5, { x: 4, z: -2, scale: 1.2, heading: 0, headYaw: 0 });
     expect(camera.position[0]).toBe(4);
     expect(camera.position[2]).toBe(-2);
     const afterTurn = vec3.transformMat4(vec3.create(), [4, camera.position[1], 1], camera.view);

@@ -4,6 +4,12 @@ import { UrbanGeometry } from './UrbanGeometry';
 
 export interface Direction { x: number; z: number }
 
+// A short fan of possible sight lines around the bearing to the destination.
+const FORK_PROBES = Array.from({ length: 11 }, (_, i) => {
+  const angle = (i - 5) * Math.PI / 11;
+  return { x: Math.sin(angle), z: Math.cos(angle) };
+});
+
 /** Indexed heap keeps Dijkstra construction O(cells log cells), with bounded memory. */
 class MinHeap {
   private readonly heap: Int32Array;
@@ -120,6 +126,65 @@ export class Navigation {
     return this.isFree(x, z, radius) && (!this.scramble || this.scramble.isSidewalk(x, z, radius))
       && (!this.urban || this.isReachable(x, z));
   }
+  /** A fork needs two competitive, forward paths separated by unwalkable ground.
+   * Adjacent raster directions in an open space belong to the same path. Called
+   * on staggered attention decisions, never during ordinary per-step routing.
+   */
+  alternativeAtFork(x: number, z: number, targetId: number, routeX: number, routeZ: number, out: Direction): boolean {
+    const goal = this.goals[targetId];
+    const goalX = goal.x - x, goalZ = goal.z - z;
+    const distance = Math.hypot(goalX, goalZ), reach = 10;
+    if (distance <= reach || !this.nearDecisionGeometry(x, z, reach)) return false;
+    const fx = goalX / distance, fz = goalZ / distance;
+    const field = this.fields[targetId], originCost = field.costs[this.cellAt(x, z)] * this.cellSize;
+    if (!Number.isFinite(originCost)) return false;
+    let best = Infinity, second = Infinity, bestX = 0, bestZ = 0, secondX = 0, secondZ = 0;
+    let branchCost = Infinity, branchX = 0, branchZ = 0;
+    const b = this.scenario.bounds;
+    for (let i = 0; i <= FORK_PROBES.length; i++) {
+      const probe = FORK_PROBES[i];
+      if (probe) {
+        const dx = fx * probe.z + fz * probe.x, dz = fz * probe.z - fx * probe.x;
+        const px = x + reach * dx, pz = z + reach * dz;
+        if (px >= b.minX && px <= b.maxX && pz >= b.minZ && pz <= b.maxZ
+          && this.walkable[this.cellAt(px, pz)] && this.lineOfSight(x, z, px, pz)) {
+          const cost = field.costs[this.cellAt(px, pz)] * this.cellSize;
+          if (cost < originCost - 1 && cost < branchCost) {
+            branchCost = cost; branchX = dx; branchZ = dz;
+          }
+          continue;
+        }
+      }
+      if (branchCost < best) {
+        second = best; secondX = bestX; secondZ = bestZ;
+        best = branchCost; bestX = branchX; bestZ = branchZ;
+      } else if (branchCost < second) {
+        second = branchCost; secondX = branchX; secondZ = branchZ;
+      }
+      branchCost = Infinity;
+    }
+    // All probes have the same approach length. Compare remaining walking
+    // distance in metres, including the grid's diagonal step cost.
+    if (!Number.isFinite(second) || second - best > 3.5 || bestX * secondX + bestZ * secondZ > 0.85) return false;
+    const firstIsRoute = routeX * bestX + routeZ * bestZ >= routeX * secondX + routeZ * secondZ;
+    out.x = firstIsRoute ? secondX : bestX;
+    out.z = firstIsRoute ? secondZ : bestZ;
+    return true;
+  }
+  private nearDecisionGeometry(x: number, z: number, reach: number): boolean {
+    if (this.scenario.scramble) {
+      for (const { from, to } of this.scenario.scramble.crosswalks) {
+        if ((x - from.x) ** 2 + (z - from.z) ** 2 <= (reach + 4) ** 2
+          || (x - to.x) ** 2 + (z - to.z) ** 2 <= (reach + 4) ** 2) return true;
+      }
+      return false;
+    }
+    for (const obstacle of this.scenario.obstacles) {
+      if (Math.abs(x - obstacle.x) <= obstacle.width / 2 + reach
+        && Math.abs(z - obstacle.z) <= obstacle.depth / 2 + reach) return true;
+    }
+    return false;
+  }
   private connectUrbanCells(): void {
     const b = this.scenario.bounds;
     for (let cell = 0; cell < this.walkable.length; cell++) {
@@ -142,6 +207,13 @@ export class Navigation {
     if (!this.connections) return true;
     const bit = (oz + 1) * 3 + ox + 1;
     return !!(this.connections[cell] & (1 << (bit > 4 ? bit - 1 : bit)));
+  }
+  /** A cardinal edge of the same clearance-checked graph used by the trip fields. */
+  cardinalNeighbor(cell: number, dx: number, dz: number): number {
+    const x = cell % this.columns + dx, z = Math.floor(cell / this.columns) + dz;
+    if (x < 0 || x >= this.columns || z < 0 || z >= this.rows) return -1;
+    const next = z * this.columns + x;
+    return this.walkable[next] && this.connected(cell, dx, dz) ? next : -1;
   }
   /** Slab test prevents steering straight through obstacles, including diagonally through corners. */
   lineOfSight(x: number, z: number, tx: number, tz: number, radius = this.clearance): boolean {

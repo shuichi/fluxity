@@ -33,7 +33,7 @@
   <p class="eyebrow">ALGORITHMS / IMPLEMENTATION NOTES</p>
   <h1>群集シミュレーションの<br>アルゴリズム</h1>
   <p class="lead">目的地へ向かう流れ、近くの人を避ける動き、赤信号で生まれる待機列。Fluxityの歩行者が動く仕組みを、実装・数式・原典の対応から説明します。</p>
-  <div class="meta"><span>原典確認：2026年11月17日</span><span>実装更新：2026年11月18日</span><span>対象：PLATEAU対応の作業ツリー（未公開）</span><span>単位：m・s・rad（シミュレーション内）</span></div>
+  <div class="meta"><span>原典確認：2026年11月17日</span><span>実装更新：2026年11月25日</span><span>対象：PLATEAU対応の作業ツリー（未公開）</span><span>単位：m・s・rad（シミュレーション内）</span></div>
 </header>
 <div class="layout">
   <nav class="toc" aria-label="目次">
@@ -58,8 +58,8 @@
     <section id="overview">
       <h2><span class="num">01 / MODEL</span>モデルと原典の位置づけ</h2>
       <p>Fluxityは、一人ひとりを位置・速度・半径・目的地を持つエージェントとして扱う<strong>平面上の微視的群集シミュレーション</strong>です。歩行判断はCPUのWeb Workerで行い、その結果をWebGPUで3Dの人物として描画します。GPU Computeで歩行者の運動を解いているわけではありません。</p>
-      <div class="note"><p><strong>この版の対象範囲</strong></p><p>2026年11月18日のPLATEAU対応に合わせ、§3・§5.4・§6・§7・§9〜11と実装リンクを更新しました。本文は公開前の作業ツリーを説明しています。従来の模擬交差点の基準版は<a href="https://github.com/shuichi/fluxity/tree/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3"><code>27e3b045</code></a>です。末尾の<code>main</code>リンクは変更の公開後の参照先で、公開前には本文と一致しない場合があります。参考文献の確認日は上記のとおりです。</p></div>
-      <p>中心となる組み合わせは、<strong>目的地別のDijkstra距離場による大域誘導</strong>と、<strong>近距離反発・前方減速・最近接予測を混合する局所Steering</strong>です。人物は地面上では円として近似され、表示用の腕や脚には独立した衝突判定を行いません。</p>
+      <div class="note"><p><strong>この版の対象範囲</strong></p><p>2026年11月25日版では、信号待ちの視線、分岐での迷い、すれ違いの判断と接触時の姿勢を扱います。本文は公開前の作業ツリーを説明しています。従来の模擬交差点の基準版は<a href="https://github.com/shuichi/fluxity/tree/27e3b045388c5eb0178271b2b7fb5e591ebb7cd3"><code>27e3b045</code></a>です。末尾の<code>main</code>リンクは変更の公開後の参照先で、公開前には本文と一致しない場合があります。参考文献の確認日は上記のとおりです。</p></div>
+      <p>中心となる組み合わせは、<strong>目的地別のDijkstra距離場による大域誘導</strong>と、<strong>近距離反発・前方減速と、最近接予測に基づく通過方向の選択</strong>です。人物は地面上では円として近似され、表示用の腕や脚には独立した衝突判定を行いません。</p>
       <div class="note"><p><strong>文献の読み方</strong></p><p>以下の引用は、確認したコードを既存のアルゴリズム・研究と対応づけたものです。特定論文の忠実な再現、または開発時にその論文を直接参照したという履歴を主張するものではありません。「アルゴリズムの原典」「設計の系譜」「比較対象」「実装固有のルール」を区別します。</p></div>
       <div class="table-wrap"><table class="wide">
         <caption>採用しているものと、比較のために挙げるもの</caption>
@@ -70,7 +70,7 @@
           <tr><td>Steering / Boids</td><td>Reynoldsの自律エージェント・局所行動の系譜。分離に似た反発を使うが、Boidsの整列・結合は実装しない。</td><td><a class="cite" href="#ref-3">[3]</a> <a class="cite" href="#ref-4">[4]</a></td></tr>
           <tr><td>Velocity Obstacles / ORCA</td><td>相対速度で衝突を予測する発想を比較。速度障害領域の構築、ORCAの半平面制約・線形計画は実装しない。</td><td><a class="cite" href="#ref-5">[5]</a> <a class="cite" href="#ref-6">[6]</a></td></tr>
           <tr><td>Social Force / Continuum Crowds</td><td>群集研究の比較対象。Social Forceの力モデルや、密度・速度場を連成させる連続体モデルは実装しない。</td><td><a class="cite" href="#ref-7">[7]</a> <a class="cite" href="#ref-8">[8]</a></td></tr>
-          <tr><td>信号・右側通行・滞留脱出</td><td>このデモのためのルールと調整値。実測された渋谷の歩行者行動・信号制御モデルではない。</td><td><a href="#signals">§7</a></td></tr>
+          <tr><td>信号・視線・通過方向の選択</td><td>このデモのためのルールと調整値。実測された渋谷の歩行者行動・信号制御モデルではない。</td><td><a href="#signals">§7</a></td></tr>
         </tbody>
       </table></div>
     </section>
@@ -82,8 +82,8 @@
         <li><strong>信号を更新</strong>次のシミュレーション時刻で赤・青を判定。</li>
         <li><strong>空間を索引化</strong>現在位置から近傍探索用のグリッドを再構築。</li>
         <li><strong>目的地へ誘導</strong>到着判定後、直進または共有方向場を参照。</li>
-        <li><strong>赤信号で減速</strong>歩道上の人の、車道へ向かう成分を弱める。</li>
-        <li><strong>人・壁を回避</strong>近距離反発、追従減速、予測による右寄せを合成。</li>
+        <li><strong>赤信号で減速</strong>車道への進入を抑え、信号待ちの人は個別の間隔で周囲を見る。</li>
+        <li><strong>人・壁を回避</strong>衝突の予測から直進・左右・減速を比較し、反発と合成。</li>
         <li><strong>運動を積分</strong>加速度と速度を制限して次の位置を計算。</li>
         <li><strong>境界を補正</strong>建物・歩道・横断歩道の外への移動を修正。</li>
         <li><strong>状態を交換</strong>向き・歩行位相・統計を更新し、描画へ渡す。</li>
@@ -125,14 +125,14 @@ w = 1（直交）または √2（斜め）</code></pre>
       </ol>
       <p>再構築はO(N+C)です（Cはこの近傍グリッドのセル数）。各人物は自分のセルと周囲8セルを走査し、距離が2.4m以下の相手を局所回避に使用します。配列は再利用され、通常の再構築で人物ごとの配列・オブジェクトを生成しません。</p>
       <div class="note"><p><strong>上限96は「調べる候補数」です。</strong>自分以外の候補を数えてから距離を判定するので、距離外の人も96件に含まれます。最も近い96人を選ぶ処理ではありません。セル内の開始位置を人物IDで回転させていますが、セルの走査順は固定であり、密集時の偏りや見落としは残ります。</p></div>
-      <p>近傍計算の上限はO(96N)になりますが、この上限は正確さとの交換条件です。予測時間が1.6秒でも、現在2.4mより遠くの相手をすべて先読みするわけではありません。</p>
+      <p>近傍計算の上限はO(96N)になりますが、この上限は正確さとの交換条件です。予測の相手は現在距離2.4m以内に限られ、速く接近する相手が範囲へ入ってから回避が始まる場合があります。</p>
       <p class="source">実装：<a href="#src-grid">SpatialGrid.rebuild</a>、<a href="#src-steering">Steering.compute</a>。</p>
     </section>
 
     <section id="steering">
       <h2><span class="num">05 / LOCAL STEERING</span>反発・減速・予測を混ぜる局所回避</h2>
       <p>ReynoldsのBoids（1987）は局所的な行動から群れの運動を作る代表的な原典で、Steering Behaviors（1999）は目標追従や回避などの行動を整理しています。Fluxityの局所回避はこの系譜に位置づけられますが、以下の係数と組み合わせはコード固有のヒューリスティックです。<a class="cite" href="#ref-3">[3]</a> <a class="cite" href="#ref-4">[4]</a></p>
-      <dl class="symbols"><dt>pᵢ, vᵢ, rᵢ</dt><dd>人物iの位置・現在速度・半径。</dd><dt>dᵢ, sᵢ</dt><dd>誘導方向と個人の希望速度。通常のdᵢは単位ベクトル。</dd><dt>q, R</dt><dd>相対位置 q = pⱼ − pᵢ、半径の和 R = rᵢ + rⱼ。</dd><dt>right(dᵢ)</dt><dd>右向きの成分 (dᵢ.z, −dᵢ.x)。</dd><dt>k</dt><dd>Avoidance設定（0〜3、初期値1）。</dd></dl>
+      <dl class="symbols"><dt>pᵢ, vᵢ, rᵢ</dt><dd>人物iの位置・現在速度・半径。</dd><dt>dᵢ, sᵢ</dt><dd>誘導方向と、このステップでの希望速度。分岐で迷っている間は速度に個人の減速倍率が掛かる。通常のdᵢは単位ベクトル。</dd><dt>q, R</dt><dd>相対位置 q = pⱼ − pᵢ、半径の和 R = rᵢ + rⱼ。</dd><dt>right(dᵢ)</dt><dd>右向きの成分 (dᵢ.z, −dᵢ.x)。</dd><dt>k</dt><dd>Avoidance設定（0〜3、初期値1）。</dd></dl>
       <p class="small">赤信号で減速した後のdᵢは、成分を弱めたまま再正規化しません。以下の内積もそのdᵢを使うため、赤信号付近の「前方距離」は厳密な単位方向への射影ではなく、制御上の量です。</p>
       <h3>5.1 パーソナルスペースの反発</h3>
       <p>相手までの距離が <code>R + 0.34m</code> 未満なら、相手から離れる成分を足します。これは速度への補正であり、人物同士のめり込みを幾何学的に必ず解消する位置補正ではありません。</p>
@@ -147,13 +147,16 @@ Sᵢ = 条件 δ &lt; R + 0.34 を満たす近傍の Sᵢⱼ の総和</code></p
 closing = sᵢ − vⱼ・dᵢ
 b_follow = (1 − f / 1.8) × min(0.85, closing × 0.5)
 brake = 対象となる近傍の b_follow の最大値</code></pre>
-      <h3>5.3 最近接時刻を予測して右へよける</h3>
+      <h3>5.3 最近接時刻を予測し、直進・左右・減速を選ぶ</h3>
       <p>自分が希望速度 <code>sᵢdᵢ</code>、相手が現在速度 <code>vⱼ</code> を維持すると仮定します。相対位置の二乗距離 <code>|q − wt|²</code> をtで微分して0と置くと、最近接時刻t*が得られます。</p>
       <pre><code>w = sᵢdᵢ − vⱼ
 t* = (q・w) / |w|²
 δ* = |q − wt*|
-u = (1 − t* / 1.6) × (1 − δ* / (R + 0.35))</code></pre>
-      <p><code>f &gt; 0</code>、<code>|w|² &gt; 0.08</code>、<code>0 &lt; t* &lt; 1.6秒</code>、<code>δ* &lt; R + 0.35m</code> のとき、緊急度uを使って右寄せの大きさを <code>max(lateral, 1.25u)</code>、減速を <code>max(brake, 0.3u)</code> に更新します。</p>
+u = (1 − t* / Hᵢ) × (1 − δ* / (R + 0.35))</code></pre>
+      <p><code>f &gt; 0</code>、<code>|w|² &gt; 0.08</code>、<code>0 &lt; t* &lt; Hᵢ</code>、<code>δ* &lt; R + 0.35m</code> のとき、衝突のおそれがあると判定します。Hᵢは歩行者ごとの先読み時間で1.4〜1.85秒。緊急度uが最も高い相手を記録し、<code>1.25u</code> が0.075を超えると、通常の歩行では次の候補を評価します。</p>
+      <p>試す速度は、前方・右方向の順に希望速度に対する倍率で表すと、直進（1, 0）、右へ（0.88, 0.64）、左へ（0.88, −0.64）、譲る（0.35, 0）です。進路前方の空きを評価するため、<code>q・dᵢ &lt; −0.3</code> の後方の相手をこの比較から外します。その他の近傍は現在速度を維持すると仮定し、各候補の先読み時間内で最も危険な接近を評価します。そこに基礎コストを加えます。直進は0、右は0.08、左は0.25、譲る場合は人によって0.11〜0.28です。すでに片側を選んでいる場合、異なる側・直進・減速への変更には0.36を加えます。後方から来る人にも近距離の反発は働きます。</p>
+      <p>評価がよい候補から、0.65秒先まで壁・路面・赤信号の制約に収まるかを調べます。すべて通れない場合も減速を選び、最終位置は§6の境界処理で確定します。危険が続く間は約0.42〜0.62秒おきに判断を見直し、最後に判断を必要とする危険を検出してから0.38秒、選択を記憶します。横へよける方向が新しく決まり、衝突予測まで0.65秒を超える余裕があれば、横方向の補正を0.12秒かけて立ち上げます。急接近時はすぐに回避します。</p>
+      <p>歩行に適用する補正の強さは、その時点の危険に合わせます。左右を選んだときは、候補の相手がいる間、横方向の補正に希望速度の0.30倍を下限として設けます。譲るときは <code>min(0.62, 0.22 + 0.46 × 最大緊急度)</code> を減速係数の下限にします。予測上の相手がいなくなれば両方の補正を解除し、次の瞬間に同じ相手が再び現れたときのために選択だけを短く保ちます。戸口付近では戸口の通行制御が優先されます。四候補を比較するのは、戸口用に指定されたセルの外で、希望速度とAvoidanceがともに正のときです。</p>
       <figure>
         <div class="diagram-scroll" role="region" aria-label="最近接予測の模式図（横スクロール可能）" tabindex="0">
         <svg viewBox="0 0 700 230" role="img" aria-labelledby="prediction-title prediction-desc" xmlns="http://www.w3.org/2000/svg">
@@ -171,15 +174,17 @@ u = (1 − t* / 1.6) × (1 − δ* / (R + 0.35))</code></pre>
         </div>
         <figcaption>この予測は自分の「希望速度」と相手の「現在速度」の組です。両者が直後に回避することまで同時に最適化していません。図の円は判定距離の概念を示すもので、実寸ではありません。狭い画面では図を左右にスクロールできます。</figcaption>
       </figure>
-      <p>FioriniとShiller（1998）のVelocity Obstaclesは、相対運動から衝突を起こす速度の集合を扱う原典です。Fluxityは最近接の一点を評価して右寄せするだけで、その速度集合を構築・探索しません。ORCAのように双方の回避負担を半分ずつ割り当て、半平面制約から安全な速度を解く方式でもありません。<a class="cite" href="#ref-5">[5]</a> <a class="cite" href="#ref-6">[6]</a></p>
+      <p>FioriniとShiller（1998）のVelocity Obstaclesは、相対運動から衝突を起こす速度の集合を扱う原典です。Fluxityでは四つの速度候補を比較し、選んだ通過方向や減速を既存の歩行制御へ反映します。ORCAは各歩行者の回避負担を分け、半平面制約から速度を求める手法です。<a class="cite" href="#ref-5">[5]</a> <a class="cite" href="#ref-6">[6]</a></p>
       <h3>5.4 合成・滞留脱出・壁回避</h3>
       <pre><code>v_desired = sᵢdᵢ × (1 − brake × min(1,k))
           + k × (Sᵢ + lateral × right(dᵢ))
-          + 滞留時の右寄せ + 壁・外周からの反発
+          + 戸口で通行者に譲る成分 + 滞留時の右寄せ + 壁・外周からの反発
 最後に |v_desired| を 1.12sᵢ 以下へ制限</code></pre>
       <p>速度が希望速度の20%未満の状態が2秒を超えて続くと、希望速度が正の場合に <code>0.3 × right(dᵢ)</code> を追加します。対称な対向流の膠着を緩めるためのルールですが、必ず脱出できる保証はありません。</p>
       <p>PLATEAU版では歩行可能ポリゴンの最寄り境界からの距離が <code>rᵢ + 0.75m</code> 未満なら、境界から内側へ向かう成分を加えます。他シナリオでは建物AABBの最近点を使います。シーン外周にも同様の反発があります。これらと滞留脱出はkの乗算の外にあるため、<strong>Avoidanceを0にしても壁・信号・滞留脱出の処理は残ります。</strong></p>
-      <p class="source">実装：<a href="#src-steering">Steering.compute</a>。<code>LocalAvoidance</code>を置き換えれば、経路探索やWorker通信を維持したまま別の回避法を導入できます。</p>
+      <h3>5.5 肩が触れた後の反応</h3>
+      <p>円として表した体が接し、実際の相対速度のうち相手に近づく成分が0.22m/sを超えたとき、接触側と逆に上体を短く傾けます。傾きは接近速度に応じて最大0.21radとなり、通常歩行では一時的な減速にも使います。体の間隔が半径の和＋0.055m以内の間は同じ接触として扱い、この距離を離れて約0.24秒経過すると次の反応が可能になります。混み合って肩を並べて立っている間に、反応だけが繰り返されることを防ぎます。</p>
+      <p class="source">実装：<a href="#src-encounters">EncounterState</a>、<a href="#src-steering">Steering.compute / chooseManeuver</a>。<code>LocalAvoidance</code>を置き換えれば、経路探索やWorker通信を維持したまま別の回避法を導入できます。</p>
     </section>
 
     <section id="integration">
@@ -197,20 +202,25 @@ p′ = p + v′Δt
       <h3>身体の向きと歩行アニメーション</h3>
       <p>速度が0.045m/sを超えると、移動方向 <code>atan2(vx, vz)</code> へ、最短の角度差を使って最大<strong>3.5rad/s</strong>で身体の向きを近づけます。これは見た目の向きの制限で、速度ベクトル自体の旋回速度を制限する処理ではありません。</p>
       <p>歩行位相は <code>phase += speed × Δt × 4.5</code> とし、移動距離に連動させます。位相を毎回2πへ折り返さないことで補間の継ぎ目を避けます。速度0.06m/s未満はIdle、2.2m/s超はRun、それ以外はWalkとして描画へ渡します。</p>
-      <p class="source">実装：<a href="#src-simulation">Simulation.step / writeSnapshot</a>。</p>
+      <h3>首の向きと、分岐で一瞬迷う動作</h3>
+      <p>信号待ちでは、赤信号による縁石での減速に入った人にだけ、次に見回すまでの時間を割り当てます。待ち時間は0.65秒に指数分布の時間を加え、周囲への関心が高い人ほど平均の間隔を短くします。見る先は、進みたい横断歩道の向こう側、その側にあるこちら向きの信号、近くを歩く人です。すれ違いでは、横へよける判断をした人の一部が、通る隙間に先に顔を向けます。首は身体に対して左右最大1.18rad、最大2.8rad/sで動き、一度選んだ方向を0.45〜1.05秒見てから正面へ戻します。人物視点のカメラも首の向きを反映します。</p>
+      <p>分岐の判定は、一人ずつ時刻をずらして行います。交差点の入口や障害物の手前で、目的地に向かう11方向を10m先まで調べます。通れない地面で分かれた二つの進路がどちらも目的地に近づき、残りの経路長の差が3.5m以内なら、迷う余地があります。その場所に来たときに一度、道に慣れている度合いに応じた確率で反対の候補にも顔を向け、0.55〜1.25秒の間、希望速度を35〜62%にします。その後は元の目的地へ進みます。渋谷の横断中や赤信号待ち、戸口での通行制御中には、この減速を加えません。</p>
+      <p class="source">実装：<a href="#src-attention">PedestrianAttention</a>、<a href="#src-navigation">Navigation.alternativeAtFork</a>、<a href="#src-simulation">Simulation.step / writeSnapshot</a>。</p>
     </section>
 
     <section id="signals">
-      <h2><span class="num">07 / SHIBUYA SCRAMBLE</span>信号で「横断を始める人」を制御する</h2>
+      <h2><span class="num">07 / SHIBUYA SCRAMBLE</span>横断歩道の幅を使い、赤になったら歩道へ導く</h2>
       <p>渋谷ステージは<strong>PLATEAU渋谷区2025年度の建物・道路データ</strong>を使います。建物はLOD2を優先し、背景は約500m四方、歩行計算は中心250m四方に限定します。元データの歩道に、地理院空中写真を参照して調整した駅前広場・植栽除外と5本の横断歩道を重ねています。横断歩道の幅は6.5〜11mのデモ設定で、測量済みの路面標示や現在の信号設備を表すものではありません。</p>
       <p>歩道と横断歩道のポリゴンは取り込み時に和集合・差集合を計算し、描画と経路探索の共通データにします。横断歩道の白線は車道面で切り抜きます。描画バイナリのSHA-256を地図に記録して読み込み時に検証するため、異なる版の建物・路面と歩行領域を組み合わせて実行しません。地面は平坦化し、建物は元の形状を保って建物ごとの最低標高を差し引きます。坂道・駅構内・デッキ・地下通路の多層移動は対象外です。</p>
+      <p>目的地までの経路が横断歩道を通るときは、歩道にいるうちに各人が横断位置を選びます。候補は両側の歩道がつながり、身体の幅を含めて通れる位置です。一方向の流れは横断歩道の幅いっぱいに広がり、対向する人が増えると、それぞれが進行方向の右側を多く使います。途中で赤になった人には、歩道へ退避する経路を優先します。</p>
       <div class="states">
-        <div class="state"><h3><span class="lamp" aria-hidden="true"></span>赤：新しい横断を抑止</h3><p>現在歩道上にいる人は、車道へ向かう希望方向の成分を弱め、最終位置も歩道側に制限します。</p><p>横断中の人は渡り続けます。待機者も横方向や外側へ動いて道を譲れます。</p></div>
+        <div class="state"><h3><span class="lamp" aria-hidden="true"></span>赤：新しい横断を抑止</h3><p>現在歩道上にいる人は、車道へ向かう希望方向の成分を弱め、最終位置も歩道側に制限します。</p><p>踏み出して1.5m以内で元の歩道に戻れる人は引き返し、ほかの横断者は小走りで渡り切ります。着地点の前で待っている人は、歩道内で横や後ろへ道を譲ります。</p></div>
         <div class="state"><h3><span class="lamp green" aria-hidden="true"></span>青：横断を開始</h3><p>信号による歩道限定の制約を外し、歩道と横断歩道の和集合を移動可能にします。</p><p>歩行者同士の回避と、横断歩道の外へ出ない制約は継続します。</p></div>
       </div>
       <h3>停止線への接近と、位置制約の二段階</h3>
-      <p>赤で歩道にいる人について、進行方向にある歩道境界を調べます。境界の先が歩行可能な横断領域へ開いている場合だけ停止対象とし、建物壁は停止線として数えません。停止位置までの進行方向距離が3m未満なら、<strong>歩道境界の法線方向の成分</strong>を弱めます。法線方向の減速幅は2.2m、停止位置には有効半径に加えて0.08mの余裕を設けます。減速を局所回避より前に適用し、境界に平行な移動は残します。</p>
-      <p>局所回避の押し出しで車道へ入らないよう、最後にも歩道ポリゴン内へ移動を制約します。歩道内の判定・経路誘導・減速・移動制約・横断人数は、いずれも<strong>人物半径＋0.015m</strong>で統一します。出口の縁をこの余裕まで通過していない人は赤でも歩道へ進み続けます。「横断中」の独立したフラグを永続保持する方式ではなく、毎ステップの位置から判定します。</p>
+      <p>赤で歩道にいる人について、進行方向にある歩道境界を調べます。信号待ちの注視対象は、縁石で方向を弱める前の進路から選びます。境界の先が歩行可能な横断領域へ開いている場合だけ停止対象とし、建物壁は停止線として数えません。停止位置までの進行方向距離が3m未満なら、<strong>歩道境界の法線方向の成分</strong>を弱めます。法線方向の減速幅は2.2m、停止位置には有効半径に加えて0.08mの余裕を設けます。減速を局所回避より前に適用し、境界に平行な移動は残します。</p>
+      <p>局所回避の押し出しで車道へ入らないよう、最後にも歩道ポリゴン内へ移動を制約します。歩道内の判定・経路誘導・減速・移動制約・横断人数は、いずれも<strong>人物半径＋0.015m</strong>で統一します。全身が歩道を離れ始めたときに入口を記録し、赤の最初の歩行ステップで戻る側か渡る側かを決めます。途中で青に戻っても、全身が歩道に収まった時点で元の旅程に復帰します。</p>
+      <p>渡り切る人の希望速度は通常の最大1.7倍です。小走りへの上乗せは2.8m/sまでで、すでに速い人は設定どおりのペースを保ちます。横断者は2秒ごとに進み具合を確認し、進めないときは同じ出口の幅の中で着地点を探し直します。候補の混雑度には空間グリッドの人数を使います。曲がり角では歩行可能な経由点をたどります。出口で手前の待機者だけでは通路を空けられないときは、その後ろにいる人も歩道の奥へ下がります。</p>
       <h3>線分を検査してから、境界に沿って滑らせる</h3>
       <p><code>PolygonRegion.lineInside</code>は始点・終点の包含に加え、移動線分と境界の交差、線分と各境界辺の最短距離を調べます。終点だけが有効でも、その途中で建物の穴や領域外を横切る移動は採用しません。境界は空間索引で絞り込みます。</p>
       <p>予定移動が通れない場合は、最大12回の二分探索で接触手前を求め、残った移動から外向き法線成分を除去します。この処理を最大2回行い、横断歩道の端に沿う移動を残します。Float32への格納で境界外に丸められたときは、最大4回の微小な内側補正を試します。補正量は予定移動距離を超えないようにし、安全な表現可能位置が得られなければ元の位置を維持します。</p>
@@ -222,7 +232,7 @@ p′ = p + v′Δt
 手動Red / Green → 指定した色に固定、残り時間はなし</code></pre>
       <p>周期は<strong>赤12秒＋青35秒</strong>です。実装では境界の丸め誤差を抑えるため時刻に10⁻⁹秒を加えて剰余を取ります。Pause中は時計が進まず、速度倍率はこの時計の進み方にも作用します。Autoへ戻すと現在時刻の位相に復帰し、赤から周期をやり直すわけではありません。</p>
       <p>これは本実装のデモ用ルールです。車両との協調、青の点滅、横断完了に応じた延長、実際の渋谷の信号周期はモデル化していません。</p>
-      <p class="source">実装：<a href="#src-signal">TrafficSignal</a>、<a href="#src-urban">UrbanGeometry / PolygonRegion</a>、<a href="#src-shibuya">shibuyaシナリオ</a>、<a href="#src-layout">layout.json</a>、<a href="#src-importer">import-plateau.py</a>、<a href="#src-mesh">UrbanMeshLoader</a>、<a href="#src-simulation">Simulation.step</a>。</p>
+      <p class="source">実装：<a href="#src-signal">TrafficSignal</a>、<a href="#src-crosswalk-flow">CrosswalkFlow</a>、<a href="#src-crossings">CrossingClearance / CrossingExits</a>、<a href="#src-urban">UrbanGeometry / PolygonRegion</a>、<a href="#src-shibuya">shibuyaシナリオ</a>、<a href="#src-layout">layout.json</a>、<a href="#src-importer">import-plateau.py</a>、<a href="#src-mesh">UrbanMeshLoader</a>、<a href="#src-simulation">Simulation.step</a>。</p>
     </section>
 
     <section id="time">
@@ -233,7 +243,7 @@ p′ = p + v′Δt
       <h3>SoAと二重状態</h3>
       <p>人物ごとのオブジェクトではなく、<code>x[]</code>、<code>z[]</code>、<code>vx[]</code>などのTypedArrayを並べるStructure of Arrays（SoA）形式です。運動状態をcurrent/nextの2組で保持し、全員の計算が終わってから交換します。これにより、同じステップ内で先に計算した人の新しい位置を、後の人が読んでしまう非対称性を避けます。ただしIDや候補順序への依存まで消えるわけではありません。</p>
       <h3>Snapshot転送と表示補間</h3>
-      <p>Snapshotは1人13個のFloat32、<strong>52バイト</strong>です。Workerが用意した4個のArrayBufferをTransferableとして受け渡しし、メインスレッドは直前と現在の2状態を保持します。空きバッファがなければ中間Snapshotの送信を省略し、返却時に最新状態を送ります。世代番号でリセット前のデータを除外します。</p>
+      <p>WorkerのSnapshotは、身体の向き・首の角度・接触時の傾きを含む1人15個のFloat32、<strong>60バイト</strong>です。GPUに送る人物は4個のvec4、1人64バイトにまとめ、首と上体を頂点シェーダーで動かします。Workerが用意した4個のArrayBufferをTransferableとして受け渡しし、メインスレッドは直前と現在の2状態を保持します。空きバッファがなければ中間Snapshotの送信を省略し、返却時に最新状態を送ります。世代番号でリセット前のデータを除外します。</p>
       <pre><code>p_render = (1 − α) p_previous + α p_current
 α = clamp((受信後の実時間 × 速度倍率) / Snapshot間のシミュレーション時刻差, 0, 1)</code></pre>
       <p>Snapshot間のシミュレーション時刻差が0の場合はΔtを代用します。これはCPUの処理時間ではありません。向きは最短の角度差、歩行位相は連続値で補間します。受信時刻を基準にするため、Fiedlerの記事のaccumulator比率をそのまま使う実装ではありません。αは1で止まり、未来位置への外挿は行いません。通常は約1ステップ分遅れた状態を滑らかに見せ、転送が間引かれた場合はより広い状態間を補間します。同じスロットが別人に入れ替わった場合は人物の世代番号で判別し、新しい人物の位置から表示します。</p>
@@ -245,6 +255,7 @@ p′ = p + v′Δt
       <h2><span class="num">09 / REPRODUCIBILITY</span>初期化・目的地更新・再現性</h2>
       <p>乱数はseedから生成し、体格・速度差・外観・初期配置・目的地の分散に使用します。<code>Random.next</code>の定数 <code>0x6d2b79f5</code> と乗算・XORの構成は、Ettinger（2017）の<strong>Mulberry32</strong>に対応するものです。<a class="cite" href="#ref-11">[11]</a></p>
       <p>ただし本実装の状態変数はJavaScriptのNumberで、加算のたびに32bitへ折り返す処理はありません。原典の32bit整数状態と完全に同じ長周期特性を保証するとは記述しません。通常の再現性は同じコード・seed・設定・ステップ列・設定変更のタイミングを前提とし、ブラウザ間の全演算のbit単位一致まで検証していません。</p>
+      <p>周囲を見る頻度・道への慣れ・衝突の先読み時間・譲る傾向は、シード、人物スロットID、人物の世代から決めます。注視の間隔や持続時間には各人物専用の乱数列を使います。出入口でそのスロットが別人に入れ替わると、性向と行動タイマーも新しくなり、直前の人物の姿勢は引き継ぎません。</p>
       <h3>初期配置は試行回数を制限した拒否サンプリング</h3>
       <p>スポーン領域から候補点を取り、通行可能性と既配置人物との距離を調べます。最大100回まで試し、密集時には間隔条件を緩めます。渋谷の候補点は、目的地へ到達できる歩道に限定します。最後の候補が無効なら、あらかじめ検査した有限の歩道セル一覧から選び直します。同じスポーン領域内のセルを優先し、候補がなければ共通一覧を使います。有効なセルが一つもなければエラーにするため、空の地図で無限に探索し続けません。これは厳密なPoisson Disk Samplingや、全員の非重複を保証する配置法ではありません。</p>
       <h3>出入口を通って街を出入りする</h3>
@@ -256,7 +267,7 @@ p′ = p + v′Δt
 
     <section id="parameters">
       <h2><span class="num">10 / PARAMETERS</span>主要パラメータと、その意味</h2>
-      <p>以下は2026年11月18日のPLATEAU対応作業ツリーの実装値です。論文から転記した普遍定数や、実測データに適合させた係数ではありません。</p>
+      <p>以下は2026年11月25日時点の実装値です。論文から転記した普遍定数や、実測データに適合させた係数ではありません。</p>
       <div class="table-wrap"><table class="wide"><thead><tr><th scope="col">パラメータ</th><th scope="col">値</th><th scope="col">用途・実装</th></tr></thead><tbody>
         <tr><td>固定刻み</td><td>1/30秒</td><td><a href="#src-types">FIXED_DT</a>。速度倍率は刻み幅を変えない。倍率のCore許容範囲は0.1〜4、UIは0.25〜2。</td></tr>
         <tr><td>追いつき処理</td><td>最大3ステップ</td><td><a href="#src-worker">Worker</a>。過剰な蓄積時間は破棄。</td></tr>
@@ -270,7 +281,7 @@ p′ = p + v′Δt
         <tr><td>人物半径</td><td>0.25 × scale m</td><td>scaleは0.89〜1.13。半径は約0.223〜0.283m。歩道内判定・誘導・境界制約にはさらに0.015mを加える。</td></tr>
         <tr><td>近距離反発の余裕</td><td>半径の和 + 0.34m</td><td>通常の係数は3.6。出入口を通行中の相手には8。1組からの補正量の上限は2.4。</td></tr>
         <tr><td>前方追従</td><td>1.8m以内</td><td>横方向は半径の和 + 0.2m以内。</td></tr>
-        <tr><td>予測時間 / 余裕</td><td>1.6秒 / +0.35m</td><td>候補の現在位置は2.4m以内に限定。</td></tr>
+        <tr><td>予測時間 / 余裕</td><td>1.4〜1.85秒 / +0.35m</td><td>通常歩行者の先読み時間は個人ごと。候補の現在位置は2.4m以内に限定。</td></tr>
         <tr><td>速度応答 / 加速度</td><td>0.3秒 / 3.8m/s²</td><td>境界による位置補正は別処理。</td></tr>
         <tr><td>速度上限係数</td><td>希望速度 × 1.12</td><td>設定を下げた直後は滑らかな減速を優先。</td></tr>
         <tr><td>身体の旋回</td><td>最大3.5rad/s</td><td>移動方向への見た目の追従。</td></tr>
@@ -292,12 +303,12 @@ p′ = p + v′Δt
       <p>対象コードには、seedによる再現性、障害物を迂回する到達、グリッドの索引、対向2人のすれ違い、加減速と向き、赤信号での進入抑止、横断中の継続、端に沿う移動、Snapshotの所有権などの自動テストがあります。PLATEAU対応では、穴付き・回転ポリゴン、孤立領域、出口の縁とFloat32丸め、実地図の目的地連結、1,000人の赤青切り替え、20,000人の初期化と短時間の領域検査、地図とバイナリの版一致を追加しました。</p>
       <p>参照：<a href="#src-tests">シミュレーション・信号・地図・読込のテスト一覧</a>。テストが扱う条件で性質を確認しているのであり、任意の密度・配置・速度・実行時間で成立する数学的証明ではありません。</p>
       <div class="table-wrap"><table class="wide"><thead><tr><th scope="col">境界</th><th scope="col">実装上の意味</th></tr></thead><tbody>
-        <tr><td>人物同士の重なり</td><td>速度補正のみで、接触拘束を解かない。過密時や候補の見落としで重なり得る。</td></tr>
-        <tr><td>渋滞・デッドロック</td><td>右側通行と滞留脱出で軽減するが、出口の混雑や対向流の膠着を必ず解消する保証はない。</td></tr>
+        <tr><td>人物同士の重なり</td><td>通常の歩道では速度補正で回避する。接触時に姿勢を変えて減速するが、過密時や候補の見落としで体が重なり得る。戸口には専用の通行制御がある。</td></tr>
+        <tr><td>渋滞・デッドロック</td><td>通過側の保持・譲り合い・滞留脱出で軽減するが、出口の混雑や対向流の膠着を必ず解消する保証はない。</td></tr>
         <tr><td>最短経路・動的混雑</td><td>静的な共有場。混雑で大域経路を再最適化せず、個別軌跡の最短性も保証しない。</td></tr>
         <tr><td>境界と大きな刻み</td><td>渋谷は静的な平面ポリゴンに対する半径付き線分検査と滑り補正。他シナリオは従来の制約を使う。動く障害物や多層3DへのCCDではない。coreのstepは0超〜0.1秒を許すが、Workerは1/30秒固定。</td></tr>
         <tr><td>地図と高さ</td><td>PLATEAUの版年は形状の取得年ではない。地面は平坦化し、横断歩道・信号位置・駅前補正はデモ用の調整。地表の建物輪郭で移動を制約し、屋根形状を歩行衝突に直接使わない。</td></tr>
-        <tr><td>実測との対応</td><td>歩行速度差・空間係数・右寄せ・信号周期はデモ設定。実在の渋谷の流量・避難時間・安全性の予測用に校正していない。</td></tr>
+        <tr><td>実測との対応</td><td>歩行速度差・視線や迷いの発生率・回避コスト・信号周期はデモ設定。実在の渋谷の流量・避難時間・安全性の予測用に校正していない。</td></tr>
         <tr><td>計算量と性能</td><td>近傍探索には上限があるが、描画・障害物数・領域判定なども時間を使う。全端末・全人数で30Hzや60FPSを保証しない。</td></tr>
       </tbody></table></div>
       <p>人数N、近傍セル数C、各人のポリゴン判定で調べる辺などの総量をQᵢとすると、PLATEAU版の通常ステップは概ね <code>O(N + C + 96N + ΣQᵢ)</code> に近い構成です。空間索引と短い先読みでQᵢを減らしますが、地図形状に依存し、常に一定時間という保証ではありません。AABBを使う他シナリオには人数×障害物数の走査が残ります。初期化・Dijkstra場の構築・GPU描画はこの目安に含みません。</p>
@@ -325,12 +336,16 @@ p′ = p + v′Δt
 
     <section id="sources">
       <h2><span class="num">SOURCE MAP</span>実装ファイル一覧</h2>
-      <p>以下は2026年11月18日の作業ツリーで確認したファイルと、公開後の参照先となるGitHubのmainリンクです。固定コミットへのリンクではありません。変更が未公開の間やmain更新後は本文と差が生じ得るため、対象ファイルの内容も確認してください。</p>
+      <p>以下は2026年11月25日の作業ツリーで確認したファイルと、公開後の参照先となるGitHubのmainリンクです。固定コミットへのリンクではありません。変更が未公開の間やmain更新後は本文と差が生じ得るため、対象ファイルの内容も確認してください。</p>
       <ul class="sources">
         <li id="src-simulation"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Simulation.ts"><code>src/simulation/Simulation.ts</code></a> — 初期化、目的地更新、信号による減速、運動積分、統計。</li>
         <li id="src-navigation"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Navigation.ts"><code>src/simulation/Navigation.ts</code></a> — MinHeap、Dijkstra距離場、方向場、見通し判定。</li>
+        <li id="src-crosswalk-flow"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/CrosswalkFlow.ts"><code>CrosswalkFlow.ts</code></a> — 横断歩道の選択と、向かい合う流れに応じた横断位置の分散。</li>
+        <li id="src-crossings"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/CrossingClearance.ts"><code>CrossingClearance.ts</code></a> と <a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/CrossingExits.ts"><code>CrossingExits.ts</code></a> — 横断の入口、赤での退避先、出口までの進み具合と着地点の選び直し。</li>
         <li id="src-grid"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/SpatialGrid.ts"><code>src/simulation/SpatialGrid.ts</code></a> — セルの集計、累積和、人物索引。</li>
         <li id="src-steering"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Steering.ts"><code>src/simulation/Steering.ts</code></a> — 局所回避、前方減速、最近接予測、壁反発。</li>
+        <li id="src-attention"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/PedestrianAttention.ts"><code>src/simulation/PedestrianAttention.ts</code></a> — 見回す対象と時刻、首の角度、分岐での一時減速。</li>
+        <li id="src-encounters"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/EncounterState.ts"><code>src/simulation/EncounterState.ts</code></a> — すれ違う側の保持、反応の間隔、接触時の上体の傾き。</li>
         <li id="src-urban"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/UrbanGeometry.ts"><code>src/simulation/UrbanGeometry.ts</code></a> — 穴付きポリゴン、境界の空間索引、法線方向の減速、半径付き線分検査と滑り。</li>
         <li id="src-layout"><a href="https://github.com/shuichi/fluxity/blob/main/data/shibuya/layout.json"><code>data/shibuya/layout.json</code></a> — 横断歩道・駅前補正・信号・出入口・目的地遷移と調整出典。</li>
         <li id="src-importer"><a href="https://github.com/shuichi/fluxity/blob/main/scripts/import-plateau.py"><code>scripts/import-plateau.py</code></a> — CityGML選択、座標変換、三角形化、地表ポリゴンの集合演算とハッシュ生成。</li>
@@ -349,6 +364,6 @@ p′ = p + v′Δt
     </section>
   </main>
 </div>
-<footer><span>Fluxity · Algorithms &amp; implementation notes · Updated 2026-11-18</span><a href="#">ページ先頭へ ↑</a></footer>
+<footer><span>Fluxity · Algorithms &amp; implementation notes · Updated 2026-11-25</span><a href="#">ページ先頭へ ↑</a></footer>
 </body>
 </html>

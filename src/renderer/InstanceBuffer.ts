@@ -18,6 +18,7 @@ export function samplePersonPose(pose: PersonPose, from: Float32Array, to: Float
   pose.x = x + dx * t;
   pose.z = z + dz * t;
   pose.heading = lerpAngle(from[offset + 2], to[offset + 2], t);
+  pose.headYaw = from[offset + 13] + (to[offset + 13] - from[offset + 13]) * t;
   pose.scale = to[offset + 6];
   return t;
 }
@@ -33,7 +34,7 @@ export class InstanceBuffer {
   readonly visibleLives = new Uint32Array(MAX_AGENTS);
   private readonly levels = new Uint8Array(MAX_AGENTS);
   private readonly frustum = new Frustum();
-  private readonly pose: PersonPose = { x: 0, z: 0, heading: 0, scale: 1 };
+  private readonly pose: PersonPose = { x: 0, z: 0, heading: 0, headYaw: 0, scale: 1 };
   visible = 0;
 
   constructor(private readonly device: GPUDevice) {
@@ -76,10 +77,12 @@ export class InstanceBuffer {
       this.scratch[p + 8] = current[s + 8];
       this.scratch[p + 9] = current[s + 9];
       this.scratch[p + 10] = current[s + 10];
-      this.scratch[p + 11] = current[s + 7];
+      // The procedural shader derives its gait from speed; tint.w carries the shoulder reaction.
+      this.scratch[p + 11] = from[s + 14] + (current[s + 14] - from[s + 14]) * t;
       this.scratch[p + 12] = id;
       this.scratch[p + 13] = lod;
       this.scratch[p + 14] = opacity;
+      this.scratch[p + 15] = this.pose.headYaw;
     }
     this.offsets[0] = 0;
     this.offsets[1] = this.counts[0];

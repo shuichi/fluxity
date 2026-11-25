@@ -83,6 +83,28 @@ describe('polygon ground geometry', () => {
       }
     }
   });
+  it('recovers a rounded starting position within the motion budget', () => {
+    const strip = { rings: [[{ x: 90, z: -2 }, { x: 100, z: -2 }, { x: 100, z: 2 }, { x: 90, z: 2 }]] };
+    const geometry = new UrbanGeometry({ ...testScenario, urbanMap: { ...map, sidewalks: [strip], walkable: [strip] } });
+    // The stored coordinate is about half a micrometre beyond the allowed clearance.
+    const x = Math.fround(99.750031), radius = 0.25, result = { x, z: 0 };
+    expect(geometry.isWalkable(x, 0)).toBe(true);
+    expect(geometry.isWalkable(x, 0, radius)).toBe(false);
+    for (const sidewalkOnly of [false, true]) {
+      geometry.constrain(x, 0, x, 0, radius, sidewalkOnly, result);
+      expect(result).toEqual({ x, z: 0 });
+      geometry.constrain(x, 0, x, 1e-8, radius, sidewalkOnly, result);
+      expect(result).toEqual({ x, z: 0 });
+      geometry.constrain(x, 0, x, 0.01, radius, sidewalkOnly, result);
+      expect(geometry.isSidewalk(result.x, result.z, radius)).toBe(true);
+      expect(x - result.x).toBeGreaterThan(0);
+      expect(Math.hypot(result.x - x, result.z)).toBeLessThanOrEqual(0.01);
+      for (const invalidX of [Math.fround(99.751), Math.fround(100.25)]) {
+        geometry.constrain(invalidX, 0, invalidX - 1, 0, radius, sidewalkOnly, result);
+        expect(result).toEqual({ x: invalidX, z: 0 });
+      }
+    }
+  });
 });
 
 describe('real-map navigation and signal', () => {

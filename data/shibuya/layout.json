@@ -209,19 +209,19 @@
     }
   ],
   "doorways": [
-    { "id": "northwest-shop", "approach": { "x": -32.335, "z": -26.924 }, "end": { "x": -36.245, "z": -27.768 }, "width": 2.45 },
-    { "id": "north-shop", "approach": { "x": 7.643, "z": -44.569 }, "end": { "x": 3.730, "z": -45.397 }, "width": 2.45, "queueApproach": { "x": 4.939, "z": -36.136 } },
-    { "id": "east-shop", "approach": { "x": 43.555, "z": -7.115 }, "end": { "x": 43.926, "z": -11.097 }, "width": 2.45 },
-    { "id": "forecourt-building", "approach": { "x": 24.245, "z": 46.067 }, "end": { "x": 28.230, "z": 45.720 }, "width": 2.45 },
-    { "id": "southwest-shop", "approach": { "x": -38.509, "z": 37.549 }, "end": { "x": -42.432, "z": 36.766 }, "width": 2.45 }
+    { "id": "northwest-shop", "approach": { "x": -32.335, "z": -26.924 }, "end": { "x": -36.245, "z": -27.768 }, "width": 5.2 },
+    { "id": "north-shop", "approach": { "x": 7.643, "z": -44.569 }, "end": { "x": 3.730, "z": -45.397 }, "width": 7.0 },
+    { "id": "east-shop", "approach": { "x": 43.555, "z": -7.115 }, "end": { "x": 43.926, "z": -11.097 }, "width": 7.8 },
+    { "id": "forecourt-building", "approach": { "x": 24.245, "z": 46.067 }, "end": { "x": 28.230, "z": 45.720 }, "width": 8.4 },
+    { "id": "southwest-shop", "approach": { "x": -38.509, "z": 37.549 }, "end": { "x": -42.432, "z": 36.766 }, "width": 7.8 }
   ],
   "streetEnds": [
     { "id": "north-street", "approach": { "x": 38.5, "z": -121 }, "end": { "x": 38.5, "z": -129 }, "width": 2.55 }
   ],
   "spawnTargets": [
     [3, 3, 3, 3, 0],
-    [4, 4, 4, 4, 1],
-    [0, 0, 0, 0, 2],
+    [4, 4, 4, 2, 1],
+    [0, 0, 0, 1, 2],
     [5, 5, 5, 5, 3],
     [2, 2, 2, 2, 4]
   ],

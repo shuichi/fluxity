@@ -95,8 +95,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   count: 1000, seed: 42, scenario: 'shibuya',
   simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto',
 };
-/** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity. */
-export const SNAPSHOT_STRIDE = 13;
+/** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity,headYaw,contactLean. */
+export const SNAPSHOT_STRIDE = 15;
 export const FIXED_DT = 1 / 30;
 export const MAX_AGENTS = 20000;
 export interface SnapshotMessage {
