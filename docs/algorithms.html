@@ -260,9 +260,10 @@ p′ = p + v′Δt
       <p>スポーン領域から候補点を取り、通行可能性と既配置人物との距離を調べます。最大100回まで試し、密集時には間隔条件を緩めます。渋谷の候補点は、目的地へ到達できる歩道に限定します。最後の候補が無効なら、あらかじめ検査した有限の歩道セル一覧から選び直します。同じスポーン領域内のセルを優先し、候補がなければ共通一覧を使います。有効なセルが一つもなければエラーにするため、空の地図で無限に探索し続けません。これは厳密なPoisson Disk Samplingや、全員の非重複を保証する配置法ではありません。</p>
       <h3>出入口を通って街を出入りする</h3>
       <p>歩行者は共有経路をたどり、建物入口や街路端に設けた短い通路を最後まで歩きます。建物では戸口の奥に姿が隠れ、街路では外周区間で人物と接地影が徐々に見えなくなります。</p>
+      <p>渋谷の5店舗と北の街路端では、歩道上の人が前方2.2 m以内に見える相手の位置と速度から進路の交差を予測します。相手がほぼ止まっているときは体の向きを手がかりにします。壁や手前の人で相手が隠れるかも調べます。譲る側は、出入口を通り始めた人や、出入口により近い人を先に通します。歩道上の空きへ一歩よけ、空きが見つからなければ短く待った後、自分の目的地へ向かいます。</p>
       <p>戸口に幅があるときは、店から出る人の通り道を空けて、店に入る人は戸口の脇で待ちます。戸口とその手前では、体格に応じた肩幅を使い、各ステップの途中も含めて近くの歩行者との間隔を調べます。前の人が進めばその分だけ前進し、歩道を横切る人が進路をふさいでいる間は待ちます。歩道側に横へよけられる空間があれば、壁や縁石までの余裕を確かめてそちらへ進みます。初期配置でも戸口付近の間隔を保ちます。</p>
       <p>一人が退出すると、同じステップに別の出入口から一人が登場します。出入口の幅と空きを考慮して入場位置を割り当て、混雑時は空きができるまで退出を待つため、シミュレーションの総人数は一定です。初回の配置だけは広いスポーン領域を使います。</p>
-      <p class="source">実装は <a href="#src-simulation">Simulation</a> と <a href="#src-layout">渋谷の出入口配置</a>を参照してください。</p>
+      <p class="source">実装は <a href="#src-simulation">Simulation</a>、<a href="#src-courtesy">DoorwayCourtesy</a>、<a href="#src-layout">渋谷の出入口配置</a>を参照してください。</p>
     </section>
 
     <section id="parameters">
@@ -344,6 +345,7 @@ p′ = p + v′Δt
         <li id="src-crossings"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/CrossingClearance.ts"><code>CrossingClearance.ts</code></a> と <a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/CrossingExits.ts"><code>CrossingExits.ts</code></a> — 横断の入口、赤での退避先、出口までの進み具合と着地点の選び直し。</li>
         <li id="src-grid"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/SpatialGrid.ts"><code>src/simulation/SpatialGrid.ts</code></a> — セルの集計、累積和、人物索引。</li>
         <li id="src-steering"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Steering.ts"><code>src/simulation/Steering.ts</code></a> — 局所回避、前方減速、最近接予測、壁反発。</li>
+        <li id="src-courtesy"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/DoorwayCourtesy.ts"><code>DoorwayCourtesy.ts</code></a> — 出入口で見える相手の動きを予測し、譲る相手と退く位置を決める。</li>
         <li id="src-attention"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/PedestrianAttention.ts"><code>src/simulation/PedestrianAttention.ts</code></a> — 見回す対象と時刻、首の角度、分岐での一時減速。</li>
         <li id="src-encounters"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/EncounterState.ts"><code>src/simulation/EncounterState.ts</code></a> — すれ違う側の保持、反応の間隔、接触時の上体の傾き。</li>
         <li id="src-urban"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/UrbanGeometry.ts"><code>src/simulation/UrbanGeometry.ts</code></a> — 穴付きポリゴン、境界の空間索引、法線方向の減速、半径付き線分検査と滑り。</li>

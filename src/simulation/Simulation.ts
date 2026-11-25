@@ -7,6 +7,7 @@ import { Navigation } from './Navigation';
 import { SpatialGrid } from './SpatialGrid';
 import { PortalFlow } from './PortalFlow';
 import { DoorwayClearance, doorwayRadius } from './DoorwayClearance';
+import { DoorwayCourtesy } from './DoorwayCourtesy';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
 import { TrafficSignal } from './TrafficSignal';
@@ -43,6 +44,7 @@ export class Simulation {
   private readonly crosswalkFlow?: CrosswalkFlow;
   private readonly portals: PortalFlow | undefined;
   private readonly doorways?: DoorwayClearance;
+  private readonly courtesy?: DoorwayCourtesy;
   stepCount = 0;
   time = 0;
   arrivals = 0;
@@ -68,6 +70,7 @@ export class Simulation {
       const doors = this.scenario.portals.filter(portal => portal.kind === 'door');
       if (doors.length) this.doorways = new DoorwayClearance(doors, this.grid, this.agents, this.navigation);
       this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways);
+      if (this.navigation.urban) this.courtesy = new DoorwayCourtesy(this.agents, this.navigation, this.grid, this.scenario.portals);
     }
     this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells, this.encounters, this.navigation, this.crossings);
     this.initialize();
@@ -221,6 +224,8 @@ export class Simulation {
     const scramble = this.navigation.scramble;
     const red = this.signal?.phase === 'red';
     this.grid.rebuild(read.x, read.z, a.count);
+    const courtesy = this.settings.avoidanceStrength > 0 ? this.courtesy : undefined;
+    courtesy?.update(this.time);
     if (this.avoidance instanceof Steering) this.avoidance.candidateChecks = 0;
     let totalSpeed = 0, stopped = 0, waiting = 0, crossing = 0;
     const b = this.scenario.bounds;
@@ -235,8 +240,9 @@ export class Simulation {
       const passer = previousPeer >= 0 && a.generation[previousPeer] === this.encounters.gazeLife[i] ? previousPeer : -1;
       const passSide = this.encounters.passSide[i];
       this.encounters.advance(i, dt);
+      const yielding = !clearance && courtesy?.yielding(i);
       if (this.portals) {
-        if ((!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
+        if (!yielding && (!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
           this.crosswalkFlow?.reset(i);
           this.attention.settle(i, dt);
           const speed = this.writeMotion(i, dt, this.projected.x, this.projected.z);
@@ -253,8 +259,9 @@ export class Simulation {
       }
       if (!clearance && this.doorways?.cells[this.grid.cells[i]]) this.portals?.guideSidewalk(i, this.direction);
       const crossingPace = clearance?.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) ?? 1;
-      const waitingAtMouth = !clearance && this.portals?.waitingAtMouth;
-      if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
+      const waitingAtMouth = !clearance && !yielding && this.portals?.waitingAtMouth;
+      if (yielding) courtesy!.guide(i, this.direction);
+      else if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
       const routeX = this.direction.x, routeZ = this.direction.z;
       const waitingAtRed = sidewalkOnly && scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius);
       if (waitingAtRed) waiting++;

@@ -13,8 +13,10 @@ const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1000, seed, scenar
   walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto' });
 const { agents, scenario } = simulation;
 const portals = scenario.portals!;
+const arrivalIntervals: { endSecond: number; arrivals: number }[] = [];
+let previousArrivals = 0;
 const gates = portals.map(() => ({ entered: 0, emerged: 0, near: [] as number[], slow: [] as number[],
-  slow12m: [] as number[], enteredSinceSample: 0, emergedSinceSample: 0,
+  slow12m: [] as number[], endOwnShopDwell300s12m: 0, enteredSinceSample: 0, emergedSinceSample: 0,
   intervals: [] as { endSecond: number; entered: number; emerged: number }[] }));
 const crossings = scenario.scramble!.crosswalks.map(({ from, to, width }) => {
   const length = Math.hypot(to.x - from.x, to.z - from.z);
@@ -24,6 +26,7 @@ const crossings = scenario.scramble!.crosswalks.map(({ from, to, width }) => {
 const generations = agents.generation.slice(), visited = new Uint8Array(agents.count);
 const emergingFrom = new Int16Array(agents.count).fill(-1);
 const lastX = agents.current.x.slice(), lastZ = agents.current.z.slice(), lastLife = generations.slice();
+const atOwnShopSince = new Float64Array(agents.count).fill(-1);
 
 function nearestPortal(x: number, z: number) {
   let nearest = -1, best = Infinity;
@@ -75,10 +78,25 @@ function observeStep() {
 function observeSecond(second: number) {
   const { current } = agents;
   if (second % 60 === 0 || second === duration) {
+    arrivalIntervals.push({ endSecond: second, arrivals: simulation.arrivals - previousArrivals });
+    previousArrivals = simulation.arrivals;
     for (const gate of gates) {
       gate.intervals.push({ endSecond: second, entered: gate.enteredSinceSample, emerged: gate.emergedSinceSample });
       gate.enteredSinceSample = 0; gate.emergedSinceSample = 0;
     }
+  }
+  // Residence is sampled once per second, starting before the speed-metric warmup.
+  // The first sample starts the clock at zero. Replacing the walker resets it.
+  for (let id = 0; id < agents.count; id++) {
+    const target = agents.targetId[id], portal = portals[target];
+    const x = current.x[id], z = current.z[id];
+    if (portal.kind !== 'door' || (x - portal.end.x) ** 2 + (z - portal.end.z) ** 2 >= 12 ** 2
+      || !simulation.navigation.scramble!.isSidewalk(x, z)) {
+      atOwnShopSince[id] = -1;
+      continue;
+    }
+    if (atOwnShopSince[id] < 0 || agents.generation[id] !== lastLife[id]) atOwnShopSince[id] = second;
+    if (second === duration && second - atOwnShopSince[id] >= 300) gates[target].endOwnShopDwell300s12m++;
   }
   // Circular neighborhoods use the fixed passage ends. Only people on the sidewalk
   // are visible queue candidates. A 12 m window also detects queues spreading out.
@@ -121,12 +139,13 @@ function widthSummary(positions: number[]) {
 }
 
 console.log(JSON.stringify({ seed, population: agents.count, seconds: duration, doorSampleSeconds: duration > warmup ? [warmup + 1, duration] : null,
+  allPortalArrivals: { total: simulation.arrivals, intervals: arrivalIntervals },
   crossings: crossings.map((c, i) => ({ id: ['west', 'south', 'east', 'north', 'diagonal'][i], ...widthSummary(c.positions) })),
   allCrossings: widthSummary(crossings.flatMap(c => c.positions)),
   doors: portals.flatMap((portal, i) => {
     if (portal.kind !== 'door') return [];
-    const { entered, emerged, near, slow, slow12m, intervals } = gates[i];
+    const { entered, emerged, near, slow, slow12m, endOwnShopDwell300s12m, intervals } = gates[i];
     return [{ id: portal.id, entered, emerged, meanNear6m: mean(near), meanSlow6m: mean(slow),
-      meanSlow12m: mean(slow12m), endSlow6m: slow.at(-1) ?? null, intervals }];
+      meanSlow12m: mean(slow12m), endSlow6m: slow.at(-1) ?? null, endOwnShopDwell300s12m, intervals }];
   }),
 }, null, 2));
