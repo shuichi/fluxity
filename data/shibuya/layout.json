@@ -208,46 +208,29 @@
       "depth": 37
     }
   ],
-  "targets": [
-    {
-      "x": -33,
-      "z": -23
-    },
-    {
-      "x": 7,
-      "z": -45
-    },
-    {
-      "x": 44,
-      "z": -5
-    },
-    {
-      "x": 20,
-      "z": 42
-    },
-    {
-      "x": -35,
-      "z": 38
-    }
+  "doorways": [
+    { "id": "northwest-shop", "approach": { "x": -32.335, "z": -26.924 }, "end": { "x": -36.245, "z": -27.768 }, "width": 2.45 },
+    { "id": "north-shop", "approach": { "x": 7.643, "z": -44.569 }, "end": { "x": 3.730, "z": -45.397 }, "width": 2.45, "queueApproach": { "x": 4.939, "z": -36.136 } },
+    { "id": "east-shop", "approach": { "x": 43.555, "z": -7.115 }, "end": { "x": 43.926, "z": -11.097 }, "width": 2.45 },
+    { "id": "forecourt-building", "approach": { "x": 24.245, "z": 46.067 }, "end": { "x": 28.230, "z": 45.720 }, "width": 2.45 },
+    { "id": "southwest-shop", "approach": { "x": -38.509, "z": 37.549 }, "end": { "x": -42.432, "z": 36.766 }, "width": 2.45 }
+  ],
+  "streetEnds": [
+    { "id": "north-street", "approach": { "x": 38.5, "z": -121 }, "end": { "x": 38.5, "z": -129 }, "width": 2.55 }
   ],
   "spawnTargets": [
-    3,
-    3,
-    4,
-    1,
-    2
+    [3, 3, 3, 3, 0],
+    [4, 4, 4, 4, 1],
+    [0, 0, 0, 0, 2],
+    [5, 5, 5, 5, 3],
+    [2, 2, 2, 2, 4]
   ],
-  "targetTransitions": [
-    3,
-    4,
-    0,
-    1,
-    2
-  ],
-  "targetSpread": 3,
+  "targetTransitions": [3, 4, 0, 5, 1, 2],
   "notes": [
     "Crosswalk rectangles extend into sidewalks to make continuous walkable surfaces; zebra paint is clipped to the carriageway.",
     "Hachiko forecourt pedestrian area and a small planting exclusion are conservative manual overlays; PLATEAU building footprints take precedence.",
+    "Demo doorways align with ground-floor facade planes. Each end is 0.8 m behind the wall. The north street continues on rendered pavement beyond the walking area.",
+    "Initial routes mix four trips across the junction with one local storefront trip per zone.",
     "Ground is flattened. Station interiors, decks, stairs and underground passages are excluded.",
     "Signal positions/orientations and timing are demonstration settings, not surveyed signal installations."
   ]

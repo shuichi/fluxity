@@ -17,6 +17,9 @@ export class AgentData {
   current: MotionState;
   next: MotionState;
   readonly id: Uint32Array;
+  readonly generation: Uint32Array;
+  readonly portalStage: Uint8Array;
+  readonly opacity: Float32Array;
   readonly radius: Float32Array;
   readonly preferredSpeed: Float32Array;
   readonly speedFactor: Float32Array;
@@ -31,6 +34,9 @@ export class AgentData {
   readonly stalledTime: Float32Array;
   constructor(readonly count: number) {
     this.current = new MotionState(count); this.next = new MotionState(count);
+    this.generation = new Uint32Array(count);
+    this.portalStage = new Uint8Array(count);
+    this.opacity = new Float32Array(count).fill(1);
     this.id = new Uint32Array(count); this.radius = new Float32Array(count);
     this.preferredSpeed = new Float32Array(count); this.speedFactor = new Float32Array(count);
     this.preferredVX = new Float32Array(count); this.preferredVZ = new Float32Array(count);

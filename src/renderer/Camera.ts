@@ -2,6 +2,28 @@ import { mat4, vec3 } from 'gl-matrix';
 import { clamp } from '../math/geometry';
 import type { Bounds, CameraView } from '../types';
 
+interface Drag {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  pan: boolean;
+  moved: boolean;
+  canPick: boolean;
+}
+
+export interface PersonPose {
+  x: number;
+  z: number;
+  heading: number;
+  scale: number;
+}
+
+export const STREET_NEAR_PLANE = 0.15;
+const CLICK_SLOP = 4; // CSS pixels, independent of render resolution.
+const modified = (event: PointerEvent) => event.shiftKey || event.ctrlKey || event.altKey || event.metaKey;
+
 export class Camera {
   readonly viewProjection = mat4.create();
   readonly view = mat4.create();
@@ -17,20 +39,35 @@ export class Camera {
   private urban = false;
   private centerX = 0;
   private centerZ = 0;
-  private drag: { x: number; y: number; pan: boolean } | null = null;
+  private drag: Drag | null = null;
+  private firstPerson = false;
+  private readonly gaze = vec3.create();
   private readonly events = new AbortController();
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, onPersonClick?: (clientX: number, clientY: number) => void) {
     const signal = this.events.signal;
     canvas.addEventListener('pointerdown', (event) => {
-      this.drag = { x: event.clientX, y: event.clientY, pan: event.button === 2 || event.shiftKey };
+      if (this.firstPerson) return;
+      if (!event.isPrimary || this.drag) {
+        this.drag = null;
+        return;
+      }
+      this.drag = {
+        pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+        x: event.clientX, y: event.clientY, pan: event.button === 2 || event.shiftKey,
+        moved: false, canPick: event.button === 0 && !modified(event),
+      };
       canvas.setPointerCapture(event.pointerId);
     }, { signal });
     canvas.addEventListener('pointermove', (event) => {
-      if (!this.drag) return;
-      const dx = event.clientX - this.drag.x, dy = event.clientY - this.drag.y;
-      this.drag.x = event.clientX; this.drag.y = event.clientY;
-      if (this.drag.pan) {
+      const drag = this.drag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (event.buttons !== 1 || modified(event)) drag.canPick = false;
+      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) <= CLICK_SLOP) return;
+      drag.moved = true;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      drag.x = event.clientX; drag.y = event.clientY;
+      if (drag.pan) {
         const scale = this.distance * 0.0012;
         this.target[0] += (-Math.cos(this.yaw) * dx + Math.sin(this.yaw) * dy) * scale;
         this.target[2] += (Math.sin(this.yaw) * dx + Math.cos(this.yaw) * dy) * scale;
@@ -39,11 +76,24 @@ export class Camera {
         this.elevation = clamp(this.elevation + dy * 0.004, 0.04, 1.53);
       }
     }, { signal });
-    for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-      canvas.addEventListener(name, () => { this.drag = null; }, { signal });
-    }
+    canvas.addEventListener('pointerup', event => {
+      const drag = this.drag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      this.drag = null;
+      if (drag.canPick && !drag.moved && event.button === 0 && !modified(event)
+        && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) <= CLICK_SLOP) {
+        onPersonClick?.(event.clientX, event.clientY);
+      }
+    }, { signal });
+    const cancel = (event: PointerEvent) => {
+      if (this.drag?.pointerId === event.pointerId) this.drag = null;
+    };
+    canvas.addEventListener('pointercancel', cancel, { signal });
+    canvas.addEventListener('lostpointercapture', cancel, { signal });
     canvas.addEventListener('wheel', (event) => {
       event.preventDefault();
+      if (this.firstPerson) return;
+      if (this.drag) this.drag.canPick = false;
       this.distance = clamp(this.distance * Math.exp(event.deltaY * 0.001), 5, this.extent * 3.8);
     }, { passive: false, signal });
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), { signal });
@@ -81,14 +131,22 @@ export class Camera {
     }
   }
 
-  update(aspect: number): void {
-    const horizontal = Math.cos(this.elevation) * this.distance;
-    this.position[0] = this.target[0] + Math.sin(this.yaw) * horizontal;
-    this.position[1] = this.target[1] + Math.sin(this.elevation) * this.distance;
-    this.position[2] = this.target[2] + Math.cos(this.yaw) * horizontal;
-    mat4.lookAt(this.view, this.position, this.target, [0, 1, 0]);
+  update(aspect: number, person?: PersonPose): void {
+    this.firstPerson = person !== undefined;
+    if (person) {
+      this.drag = null;
+      vec3.set(this.position, person.x, 1.65 * person.scale, person.z);
+      vec3.set(this.gaze, person.x + Math.sin(person.heading), this.position[1], person.z + Math.cos(person.heading));
+      mat4.lookAt(this.view, this.position, this.gaze, [0, 1, 0]);
+    } else {
+      const horizontal = Math.cos(this.elevation) * this.distance;
+      this.position[0] = this.target[0] + Math.sin(this.yaw) * horizontal;
+      this.position[1] = this.target[1] + Math.sin(this.elevation) * this.distance;
+      this.position[2] = this.target[2] + Math.cos(this.yaw) * horizontal;
+      mat4.lookAt(this.view, this.position, this.target, [0, 1, 0]);
+    }
     // A larger near plane at aerial distances preserves depth precision for paving/roofs.
-    const near = this.distance < 35 ? 0.15 : 0.75;
+    const near = person || this.distance < 35 ? STREET_NEAR_PLANE : 0.75;
     mat4.perspectiveZO(this.projection, this.fov, aspect, near, 1400);
     mat4.multiply(this.viewProjection, this.projection, this.view);
   }

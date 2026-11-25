@@ -3,8 +3,9 @@ import { mat4 } from 'gl-matrix';
 import { lerpAngle } from '../math/geometry';
 import { Frustum } from '../renderer/Culling';
 import { createHumanMesh, HUMAN_VERTEX_STRIDE } from '../renderer/HumanMesh';
-import { INSTANCE_FLOATS, INSTANCE_STRIDE } from '../renderer/InstanceBuffer';
+import { INSTANCE_FLOATS, INSTANCE_STRIDE, samplePersonPose } from '../renderer/InstanceBuffer';
 import { LODManager } from '../renderer/LODManager';
+import { SNAPSHOT_STRIDE } from '../types';
 
 describe('rendering data contracts', () => {
   it('keeps storage records vec4-aligned and mesh indices in bounds at all LODs', () => {
@@ -37,6 +38,20 @@ describe('rendering data contracts', () => {
   it('interpolates headings over the shortest angular arc', () => {
     expect(lerpAngle(Math.PI - 0.1, -Math.PI + 0.1, 0.5)).toBeCloseTo(Math.PI);
     expect(lerpAngle(0.2, 0.6, 0.5)).toBeCloseTo(0.4);
+  });
+
+  it('starts a new life at its own pose even at nearby exits and across skipped snapshots', () => {
+    const previous = new Float32Array(SNAPSHOT_STRIDE);
+    const current = previous.slice();
+    current[0] = 2; current[1] = 3; current[2] = Math.PI / 2; current[6] = 1.1;
+    const pose = { x: 0, z: 0, heading: 0, scale: 1 };
+    expect(samplePersonPose(pose, previous, current, 0, 0.25)).toBe(0.25);
+    expect(pose.x).toBe(0.5);
+    current[11] = 2;
+    expect(samplePersonPose(pose, previous, current, 0, 0.25)).toBe(1);
+    expect(pose.x).toBe(2); expect(pose.z).toBe(3);
+    expect(pose.heading).toBeCloseTo(Math.PI / 2);
+    expect(pose.scale).toBeCloseTo(1.1);
   });
 });
 

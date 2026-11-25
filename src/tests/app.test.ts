@@ -1,19 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ControlCallbacks } from '../app/Controls';
+import type { PickedPerson } from '../renderer/WebGPURenderer';
 import type { SimulationConfig, SnapshotMessage, WorkerInput, WorkerOutput } from '../types';
 import { DEFAULT_CONFIG, SNAPSHOT_STRIDE } from '../types';
 
 const harness = vi.hoisted(() => ({
   callbacks: null as ControlCallbacks | null,
+  clickPerson: (_x: number, _y: number) => {},
   controls: {
     setPaused: vi.fn(), setConfig: vi.fn(), setStatus: vi.fn(),
     renderBenchmark: vi.fn(), setBenchmarkRunning: vi.fn(), setBenchmarkStatus: vi.fn(),
     showError: vi.fn(), destroy: vi.fn(),
-    setSignal: vi.fn(),
+    setSignal: vi.fn(), setPersonView: vi.fn(),
   },
   renderer: {
     setScenario: vi.fn(), destroy: vi.fn(), camera: { reset: vi.fn(), setView: vi.fn() },
     setPhotographicAppearance: vi.fn(),
+    canPlacePersonCamera: vi.fn(() => true),
+    pickPerson: vi.fn<(x: number, y: number) => Promise<PickedPerson | null>>(),
     render: vi.fn((_previous: Float32Array, _current: Float32Array, count: number) => ({
       visible: count, lodCounts: [count, 0, 0], drawCalls: 5, triangles: count * 100,
       cpuMs: 1, resolution: '1280 × 720',
@@ -30,6 +34,7 @@ vi.mock('../app/Controls', () => ({
     readonly setConfig = harness.controls.setConfig;
     readonly setStatus = harness.controls.setStatus;
     readonly setSignal = harness.controls.setSignal;
+    readonly setPersonView = harness.controls.setPersonView;
     readonly renderBenchmark = harness.controls.renderBenchmark;
     readonly setBenchmarkRunning = harness.controls.setBenchmarkRunning;
     readonly setBenchmarkStatus = harness.controls.setBenchmarkStatus;
@@ -39,7 +44,12 @@ vi.mock('../app/Controls', () => ({
   },
 }));
 vi.mock('../app/StatsPanel', () => ({ StatsPanel: class { readonly update = harness.updateStats; } }));
-vi.mock('../renderer/WebGPURenderer', () => ({ WebGPURenderer: { create: async () => harness.renderer } }));
+vi.mock('../renderer/WebGPURenderer', () => ({ WebGPURenderer: {
+  create: async (_canvas: HTMLCanvasElement, _fail: (message: string) => void, click: typeof harness.clickPerson) => {
+    harness.clickPerson = click;
+    return harness.renderer;
+  },
+} }));
 
 import { App } from '../app/App';
 
@@ -105,6 +115,84 @@ describe('application / worker integration', () => {
     frame();
   });
   afterEach(() => { app.destroy(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('follows the picked person across snapshots and returns without resetting the camera or crowd', async () => {
+    const worker = FakeWorker.instance;
+    const init = worker.latestInit();
+    harness.renderer.pickPerson.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 0, life: 0 });
+    harness.clickPerson(20, 35);
+    await Promise.resolve();
+    expect(harness.controls.setPersonView).not.toHaveBeenCalled();
+    harness.clickPerson(50, 100);
+    await Promise.resolve();
+    expect(harness.renderer.pickPerson).toHaveBeenLastCalledWith(50, 100);
+    expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(true);
+    worker.emit(worker.snapshot(1));
+    frame();
+    expect(harness.renderer.render.mock.lastCall).toContainEqual(expect.objectContaining({ followedId: 0 }));
+    controls().onReturnView();
+    frame();
+    expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(false);
+    expect(harness.renderer.render.mock.lastCall).toContainEqual(expect.objectContaining({ followedId: undefined }));
+    expect(harness.renderer.camera.reset).not.toHaveBeenCalled();
+    expect(worker.latestInit()).toBe(init);
+  });
+
+  it('invalidates in-flight picks and waits for the replacement crowd to be drawn after a reset', async () => {
+    let finishPick!: (person: PickedPerson) => void;
+    harness.renderer.pickPerson.mockReturnValueOnce(new Promise(resolve => { finishPick = resolve; }));
+    harness.clickPerson(50, 100);
+    controls().onReset();
+    const worker = FakeWorker.instance;
+    worker.emit(worker.snapshot());
+    harness.clickPerson(50, 100);
+    expect(harness.renderer.pickPerson).toHaveBeenCalledTimes(1);
+    frame();
+    finishPick({ id: 12, life: 0 });
+    await Promise.resolve();
+    expect(harness.controls.setPersonView).not.toHaveBeenCalled();
+    harness.renderer.pickPerson.mockResolvedValueOnce({ id: 12, life: 0 });
+    harness.clickPerson(50, 100);
+    await Promise.resolve();
+    controls().onConfig({ count: 5000 }, true);
+    expect(harness.controls.setPersonView.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('leaves a followed pedestrian at the end of their trip and rejects a stale click on that life', async () => {
+    const worker = FakeWorker.instance;
+    const person = { id: 2, life: 0 };
+    harness.renderer.pickPerson.mockResolvedValueOnce(person).mockResolvedValueOnce(person);
+    harness.clickPerson(30, 50);
+    await Promise.resolve();
+    expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(true);
+    const snapshot = worker.snapshot(12);
+    new Float32Array(snapshot.buffer)[person.id * SNAPSHOT_STRIDE + 11] = 1;
+    worker.emit(snapshot);
+    frame();
+    expect(harness.renderer.render.mock.lastCall).toContainEqual(expect.objectContaining({ followedId: undefined }));
+    expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(false);
+    expect(harness.renderer.camera.reset).not.toHaveBeenCalled();
+    harness.clickPerson(30, 50);
+    await Promise.resolve();
+    expect(harness.controls.setPersonView.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('refuses first person inside the doorway and restores the saved view as a walker reaches the wall', async () => {
+    const person = { id: 0, life: 0 };
+    harness.renderer.pickPerson.mockResolvedValueOnce(person).mockResolvedValueOnce(person);
+    harness.renderer.canPlacePersonCamera.mockReturnValueOnce(false);
+    harness.clickPerson(30, 50);
+    await Promise.resolve();
+    expect(harness.controls.setPersonView).not.toHaveBeenCalled();
+    harness.clickPerson(30, 50);
+    await Promise.resolve();
+    expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(true);
+    harness.renderer.canPlacePersonCamera.mockReturnValueOnce(false);
+    frame();
+    expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(false);
+    expect(harness.renderer.render.mock.lastCall).toContainEqual(expect.objectContaining({ followedId: undefined }));
+    expect(harness.renderer.camera.reset).not.toHaveBeenCalled();
+  });
 
   it('honors Pause during a study that was started from a paused simulation', () => {
     const worker = FakeWorker.instance;

@@ -1,12 +1,13 @@
 import humanSource from '../shaders/human.wgsl?raw';
 import environmentSource from '../shaders/environment.wgsl?raw';
 import shadowSource from '../shaders/shadow.wgsl?raw';
-import { MAX_AGENTS } from '../types';
-import type { Quality, RenderStats, Scenario, SignalState } from '../types';
-import { Camera } from './Camera';
+import { MAX_AGENTS, SNAPSHOT_STRIDE } from '../types';
+import type { PedestrianPortal, Quality, RenderStats, Scenario, SignalState } from '../types';
+import { Camera, type PersonPose, STREET_NEAR_PLANE } from './Camera';
+import { doorwayBlocksEye } from './Doorways';
 import { createHumanMesh, HUMAN_VERTEX_STRIDE } from './HumanMesh';
 import { createEnvironment, ENVIRONMENT_VERTEX_STRIDE } from './Environment';
-import { InstanceBuffer, INSTANCE_STRIDE } from './InstanceBuffer';
+import { InstanceBuffer, INSTANCE_STRIDE, samplePersonPose } from './InstanceBuffer';
 import { LIGHTING } from './Lighting';
 import { UrbanMeshLoader, mergeEnvironmentMeshes, untexturedCoordinates } from './UrbanMesh';
 import type { EnvironmentMeshData } from './UrbanMesh';
@@ -23,6 +24,8 @@ interface EnvironmentMesh extends Mesh {
   appearanceGroup: GPUBindGroup;
 }
 
+export interface PickedPerson { id: number; life: number }
+
 export class WebGPURenderer {
   readonly camera: Camera;
   readonly capabilities: string;
@@ -31,11 +34,15 @@ export class WebGPURenderer {
   private readonly sceneGroup: GPUBindGroup;
   private readonly instanceGroup: GPUBindGroup;
   private readonly instances: InstanceBuffer;
+  private readonly followedPose: PersonPose = { x: 0, z: 0, heading: 0, scale: 1 };
+  private doors: PedestrianPortal[] = [];
   private readonly uniforms = new Float32Array(32);
   private readonly humans: Mesh[] = [];
   private environment: EnvironmentMesh | null = null;
   private depth: GPUTexture | null = null;
   private depthView: GPUTextureView | null = null;
+  private personIds: GPUTexture | null = null;
+  private personIdView: GPUTextureView | null = null;
   private humanPipeline!: GPURenderPipeline;
   private environmentPipeline!: GPURenderPipeline;
   private shadowPipeline!: GPURenderPipeline;
@@ -58,12 +65,13 @@ export class WebGPURenderer {
     private readonly format: GPUTextureFormat,
     adapter: GPUAdapter,
     onFatal?: (message: string) => void,
+    onPersonClick?: (clientX: number, clientY: number) => void,
   ) {
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('This browser could not create a WebGPU canvas. Try a current Chrome or Edge browser with hardware acceleration enabled.');
     this.context = context;
     this.context.configure({ device, format, alphaMode: 'opaque' });
-    this.camera = new Camera(canvas);
+    this.camera = new Camera(canvas, onPersonClick);
     const adapterName = adapter.info?.description || adapter.info?.device || adapter.info?.architecture || 'WebGPU device';
     const timestampStatus = adapter.features.has('timestamp-query') ? 'supported, not measured' : 'unsupported';
     this.capabilities = `${adapterName} · native WebGPU · ${Math.round(device.limits.maxStorageBufferBindingSize / 1048576)} MB storage limit · GPU timing: ${timestampStatus}`;
@@ -96,7 +104,8 @@ export class WebGPURenderer {
     for (let i = 0; i < 3; i++) this.humans.push(this.uploadMesh(createHumanMesh(i), `Human LOD ${i}`));
   }
 
-  static async create(canvas: HTMLCanvasElement, onFatal?: (message: string) => void): Promise<WebGPURenderer> {
+  static async create(canvas: HTMLCanvasElement, onFatal?: (message: string) => void,
+    onPersonClick?: (clientX: number, clientY: number) => void): Promise<WebGPURenderer> {
     if (!window.isSecureContext) throw new Error('WebGPU needs a secure context. Open this app on localhost or HTTPS.');
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser. Use a current desktop Chrome or Edge on Windows/macOS with hardware acceleration enabled, or Safari with WebGPU support.');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
@@ -113,7 +122,7 @@ export class WebGPURenderer {
     }
     let renderer: WebGPURenderer | undefined;
     try {
-      renderer = new WebGPURenderer(canvas, device, navigator.gpu.getPreferredCanvasFormat(), adapter, onFatal);
+      renderer = new WebGPURenderer(canvas, device, navigator.gpu.getPreferredCanvasFormat(), adapter, onFatal, onPersonClick);
       await renderer.createPipelines();
       return renderer;
     } catch (error) {
@@ -147,7 +156,7 @@ export class WebGPURenderer {
         vertex: { module: human, entryPoint: 'vertexMain', buffers: [{ arrayStride: HUMAN_VERTEX_STRIDE, attributes: [
           { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32' },
         ] }] },
-        fragment: { module: human, entryPoint: 'fragmentMain', targets: [{ format: this.format }] },
+        fragment: { module: human, entryPoint: 'fragmentMain', targets: [{ format: this.format }, { format: 'r16uint' }] },
         primitive: { topology: 'triangle-list', cullMode: 'back' }, depthStencil,
       }),
       this.device.createRenderPipelineAsync({
@@ -155,7 +164,7 @@ export class WebGPURenderer {
         vertex: { module: environment, entryPoint: 'vertexMain', buffers: [{ arrayStride: ENVIRONMENT_VERTEX_STRIDE, attributes: [
           { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x4' },
         ] }, { arrayStride: 12, attributes: [{ shaderLocation: 3, offset: 0, format: 'float32x3' }] }] },
-        fragment: { module: environment, entryPoint: 'fragmentMain', targets: [{ format: this.format }] },
+        fragment: { module: environment, entryPoint: 'fragmentMain', targets: [{ format: this.format }, { format: 'r16uint', writeMask: 0 }] },
         primitive: { topology: 'triangle-list', cullMode: 'back' }, depthStencil,
       }),
       this.device.createRenderPipelineAsync({
@@ -164,7 +173,7 @@ export class WebGPURenderer {
         fragment: { module: shadow, entryPoint: 'fragmentMain', targets: [{ format: this.format, blend: {
           color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
           alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-        } }] },
+        } }, { format: 'r16uint', writeMask: 0 }] },
         primitive: { topology: 'triangle-list', cullMode: 'none' },
         depthStencil: { ...depthStencil, depthWriteEnabled: false, depthCompare: 'less-equal' },
       }),
@@ -224,6 +233,7 @@ export class WebGPURenderer {
       const next = this.uploadEnvironment(data, images, scenario.name);
       this.releaseEnvironment();
       this.environment = next;
+      this.doors = scenario.portals?.filter(p => p.kind === 'door') ?? [];
       this.roadHalfWidth = scenario.urbanMap ? 0 : scenario.scramble?.roadHalfWidth ?? 0;
       this.camera.setBounds(scenario.bounds, Boolean(scenario.scramble), Boolean(scenario.urbanMap));
       this.instances.lod.reset();
@@ -261,14 +271,68 @@ export class WebGPURenderer {
     this.depth?.destroy();
     this.depth = this.device.createTexture({ label: 'Scene depth', size: [width, height], format: 'depth24plus', usage: GPUTextureUsage.RENDER_ATTACHMENT });
     this.depthView = this.depth.createView();
+    this.personIds?.destroy();
+    this.personIds = this.device.createTexture({
+      label: 'Visible pedestrian IDs', size: [width, height], format: 'r16uint',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+    });
+    this.personIdView = this.personIds.createView();
   }
 
-  render(previous: Float32Array, current: Float32Array, count: number, alpha: number, options: { quality: Quality; debug: boolean; signal?: SignalState }): RenderStats {
+  async pickPerson(clientX: number, clientY: number): Promise<PickedPerson | null> {
+    if (this.dead || !this.personIds) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left) * this.width / rect.width);
+    const y = Math.floor((clientY - rect.top) * this.height / rect.height);
+    if (!(x >= 0 && x < this.width && y >= 0 && y < this.height)) return null;
+
+    // Preserve identities for this exact frame while the asynchronous pixel read is in flight.
+    const lives = this.instances.visibleLives.slice();
+    const pixel = this.device.createBuffer({
+      label: 'Pedestrian under pointer', size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    try {
+      const encoder = this.device.createCommandEncoder();
+      encoder.copyTextureToBuffer({ texture: this.personIds, origin: [x, y] }, { buffer: pixel }, [1, 1]);
+      this.device.queue.submit([encoder.finish()]);
+      await pixel.mapAsync(GPUMapMode.READ);
+      if (this.dead) return null;
+      const encodedId = new Uint16Array(pixel.getMappedRange())[0];
+      if (encodedId === 0) return null;
+      const id = encodedId - 1;
+      return { id, life: lives[id] };
+    } catch (error) {
+      if (this.dead) return null;
+      throw error;
+    } finally {
+      pixel.destroy();
+    }
+  }
+
+  canPlacePersonCamera(previous: Float32Array, current: Float32Array, id: number, alpha: number): boolean {
+    if (!this.doors.length) return true;
+    samplePersonPose(this.followedPose, previous, current, id * SNAPSHOT_STRIDE, alpha);
+    const aspect = this.width / Math.max(1, this.height);
+    const nearRadius = STREET_NEAR_PLANE * Math.hypot(1, Math.tan(this.camera.fov / 2) * aspect);
+    return !this.doors.some(door => doorwayBlocksEye(door, this.followedPose, nearRadius));
+  }
+
+  render(previous: Float32Array, current: Float32Array, count: number, alpha: number,
+    options: { quality: Quality; debug: boolean; signal?: SignalState; followedId?: number }): RenderStats {
     const start = performance.now();
     if (this.dead) return { visible: 0, lodCounts: [0,0,0], drawCalls: 0, triangles: 0, cpuMs: 0, resolution: 'GPU disconnected' };
     this.resize(options.quality);
-    this.camera.update(this.width / this.height);
-    this.instances.update(previous, current, count, alpha, this.camera, this.height, options.quality);
+    const { followedId } = options;
+    const n = Math.min(count, MAX_AGENTS, Math.floor(current.length / SNAPSHOT_STRIDE));
+    const from = previous.length >= n * SNAPSHOT_STRIDE ? previous : current;
+    const t = Math.max(0, Math.min(1, alpha));
+    let person: PersonPose | undefined;
+    if (followedId !== undefined && followedId >= 0 && followedId < n) {
+      samplePersonPose(this.followedPose, from, current, followedId * SNAPSHOT_STRIDE, t);
+      person = this.followedPose;
+    }
+    this.camera.update(this.width / this.height, person);
+    this.instances.update(from, current, n, t, this.camera, this.height, options.quality, followedId);
     this.uniforms.set(this.camera.viewProjection, 0);
     this.uniforms.set(this.camera.position, 16); this.uniforms[19] = Number(this.photographicAppearance);
     this.uniforms.set(LIGHTING.direction, 20); this.uniforms[23] = LIGHTING.ambient;
@@ -282,7 +346,10 @@ export class WebGPURenderer {
     const encoder = this.device.createCommandEncoder({ label: 'Fluxity frame' });
     const pass = encoder.beginRenderPass({
       label: 'Environment, soft shadows, and articulated crowd',
-      colorAttachments: [{ view: this.context.getCurrentTexture().createView(), clearValue: LIGHTING.background, loadOp: 'clear', storeOp: 'store' }],
+      colorAttachments: [
+        { view: this.context.getCurrentTexture().createView(), clearValue: LIGHTING.background, loadOp: 'clear', storeOp: 'store' },
+        { view: this.personIdView!, clearValue: [0, 0, 0, 0], loadOp: 'clear', storeOp: 'store' },
+      ],
       depthStencilAttachment: { view: this.depthView!, depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
     });
     pass.setBindGroup(0, this.sceneGroup);
@@ -325,6 +392,7 @@ export class WebGPURenderer {
     this.scenarioRequest++;
     this.urbanMeshes.clear();
     this.camera.destroy(); this.instances.destroy(); this.sceneBuffer.destroy(); this.depth?.destroy();
+    this.personIds?.destroy();
     this.releaseEnvironment();
     for (const mesh of this.humans) { mesh.vertex.destroy(); mesh.index.destroy(); }
     this.context.unconfigure(); this.device.destroy();

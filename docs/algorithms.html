@@ -105,7 +105,7 @@
 w = 1（直交）または √2（斜め）</code></pre>
       <p class="eq-caption">コードでは浮動小数の比較に10⁻⁴の許容値を使用。格納するDはセル単位のコストであり、そのままメートルではありません。</p>
       <p>得られた距離場から、各セルの周囲で<strong>Dが最も小さい隣接セル</strong>を選び、その方向を正規化して保存します。人数分の経路を毎回探索せず、同じ目的地の人物が場を参照できます。目的地数をT、セル数をVとすると、構築は概ね<strong>O(TV log V)</strong>、場の保存は<strong>O(TV)</strong>です。</p>
-      <p>渋谷は<strong>5つの基準目的地</strong>で場を共有します。全目的地へ到達できない孤立した庭などのセルは有効グリッドから除外します。目的地同士が分断されている場合は初期化をエラーにし、接続不良のまま群集を生成しません。</p>
+      <p>渋谷では<strong>各出入口の歩道側の到達点</strong>を目的地として場を共有します。全目的地へ到達できない孤立した庭などのセルは有効グリッドから除外します。目的地同士が分断されている場合は初期化をエラーにし、接続不良のまま群集を生成しません。</p>
       <h3>近距離の見通しと、方向場の先読み</h3>
       <p>PLATEAU版では、個別目標まで10m以内で、人物半径に0.015mを足した余裕を含めて直進できる場合、その目標へ直接向かいます。それ以外は周囲3×3セルから見通せる候補を <code>D + 0.1 × 現在位置からの距離</code> で選び、保存した方向場を最大3セル分先読みします。見通せる範囲までを誘導点にすることで、各人から遠方の目的地まで長いポリゴン照合を毎回行う処理を避けています。</p>
       <p>ポリゴンの包含判定には穴も含む境界との交差回数を用い、半径の余裕には境界辺までの距離を調べます。1m幅の行と4m四方の区画で辺を索引化し、点・線分・近接境界の照合候補を絞ります。方向場をセル間で双線形補間する処理はありません。</p>
@@ -137,7 +137,8 @@ w = 1（直交）または √2（斜め）</code></pre>
       <h3>5.1 パーソナルスペースの反発</h3>
       <p>相手までの距離が <code>R + 0.34m</code> 未満なら、相手から離れる成分を足します。これは速度への補正であり、人物同士のめり込みを幾何学的に必ず解消する位置補正ではありません。</p>
       <pre><code>δ = |q|
-Sᵢⱼ = −(q / δ) × min(2.4, 3.6 × (R + 0.34 − δ))
+c = 通常は3.6、相手が出入口を通行中なら8
+Sᵢⱼ = −(q / δ) × min(2.4, c × (R + 0.34 − δ))
 Sᵢ = 条件 δ &lt; R + 0.34 を満たす近傍の Sᵢⱼ の総和</code></pre>
       <p>位置がほぼ一致する場合は、IDの大小で符号が反対になる微小ベクトルを使い、ゼロ除算と完全な対称状態を避けます。</p>
       <h3>5.2 前の人に追いつくと減速する</h3>
@@ -232,10 +233,10 @@ p′ = p + v′Δt
       <h3>SoAと二重状態</h3>
       <p>人物ごとのオブジェクトではなく、<code>x[]</code>、<code>z[]</code>、<code>vx[]</code>などのTypedArrayを並べるStructure of Arrays（SoA）形式です。運動状態をcurrent/nextの2組で保持し、全員の計算が終わってから交換します。これにより、同じステップ内で先に計算した人の新しい位置を、後の人が読んでしまう非対称性を避けます。ただしIDや候補順序への依存まで消えるわけではありません。</p>
       <h3>Snapshot転送と表示補間</h3>
-      <p>Snapshotは1人12個のFloat32、<strong>48bytes</strong>です。Workerが用意した4個のArrayBufferをTransferableとして受け渡しし、メインスレッドは直前と現在の2状態を保持します。空きバッファがなければ中間Snapshotの送信を省略し、返却時に最新状態を送ります。世代番号でリセット前のデータを除外します。</p>
+      <p>Snapshotは1人13個のFloat32、<strong>52バイト</strong>です。Workerが用意した4個のArrayBufferをTransferableとして受け渡しし、メインスレッドは直前と現在の2状態を保持します。空きバッファがなければ中間Snapshotの送信を省略し、返却時に最新状態を送ります。世代番号でリセット前のデータを除外します。</p>
       <pre><code>p_render = (1 − α) p_previous + α p_current
 α = clamp((受信後の実時間 × 速度倍率) / Snapshot間のシミュレーション時刻差, 0, 1)</code></pre>
-      <p>Snapshot間のシミュレーション時刻差が0の場合はΔtを代用します。これはCPUの処理時間ではありません。向きは最短の角度差、歩行位相は連続値で補間します。受信時刻を基準にするため、Fiedlerの記事のaccumulator比率をそのまま使う実装ではありません。αは1で止まり、未来位置への外挿は行いません。通常は約1ステップ分遅れた状態を滑らかに見せ、転送が間引かれた場合はより広い状態間を補間します。</p>
+      <p>Snapshot間のシミュレーション時刻差が0の場合はΔtを代用します。これはCPUの処理時間ではありません。向きは最短の角度差、歩行位相は連続値で補間します。受信時刻を基準にするため、Fiedlerの記事のaccumulator比率をそのまま使う実装ではありません。αは1で止まり、未来位置への外挿は行いません。通常は約1ステップ分遅れた状態を滑らかに見せ、転送が間引かれた場合はより広い状態間を補間します。同じスロットが別人に入れ替わった場合は人物の世代番号で判別し、新しい人物の位置から表示します。</p>
       <p>Workerは1本です。描画スレッドと計算スレッドは並行しますが、人物の更新を複数のCPU Workerへ分割する方式ではありません。</p>
       <p class="source">実装：<a href="#src-worker">SimulationWorker</a>、<a href="#src-agents">AgentData</a>、<a href="#src-timeline">SnapshotTimeline</a>、<a href="#src-instances">InstanceBuffer.update</a>。</p>
     </section>
@@ -246,10 +247,11 @@ p′ = p + v′Δt
       <p>ただし本実装の状態変数はJavaScriptのNumberで、加算のたびに32bitへ折り返す処理はありません。原典の32bit整数状態と完全に同じ長周期特性を保証するとは記述しません。通常の再現性は同じコード・seed・設定・ステップ列・設定変更のタイミングを前提とし、ブラウザ間の全演算のbit単位一致まで検証していません。</p>
       <h3>初期配置は試行回数を制限した拒否サンプリング</h3>
       <p>スポーン領域から候補点を取り、通行可能性と既配置人物との距離を調べます。最大100回まで試し、密集時には間隔条件を緩めます。渋谷の候補点は、目的地へ到達できる歩道に限定します。最後の候補が無効なら、あらかじめ検査した有限の歩道セル一覧から選び直します。同じスポーン領域内のセルを優先し、候補がなければ共通一覧を使います。有効なセルが一つもなければエラーにするため、空の地図で無限に探索し続けません。これは厳密なPoisson Disk Samplingや、全員の非重複を保証する配置法ではありません。</p>
-      <h3>目的地へ着いたら次を選ぶ</h3>
-      <p>目標までの距離の二乗が10未満（約3.16m以内）になると、人物を消したり再生成したりせず、次の目的地を割り当てます。PLATEAU版は5つの目的地と明示的な<code>targetTransitions</code>を使い、現在の対応は <code>0→3、1→4、2→0、3→1、4→2</code> です。各出入口の初回目標は別の<code>spawnTargets</code>で指定します。往復型のシーンは<code>XOR 1</code>、広場は現在と異なる目的地の乱数選択を維持します。旧合成交差点の<code>XOR 3</code>はfixture側だけに適用されます。</p>
-      <p>個別目標は最大8回の試行で基準目標の周囲へ分散させ、到着者が一点に集中するのを抑えます。PLATEAU版ではx/z各方向に最大3mずらし、通行可能性と到達可能性を確認します。基準点も無効なら、その目的地の有効なグリッド目標へ回復します。経路場そのものは5つの基準目標で共有したままです。</p>
-      <p class="source">実装：<a href="#src-random">Random</a>、<a href="#src-simulation">Simulation.initialize / assignTarget / nextTarget</a>。</p>
+      <h3>出入口を通って街を出入りする</h3>
+      <p>歩行者は共有経路をたどり、建物入口や街路端に設けた短い通路を最後まで歩きます。建物では戸口の奥に姿が隠れ、街路では外周区間で人物と接地影が徐々に見えなくなります。</p>
+      <p>戸口に幅があるときは、店から出る人の通り道を空けて、店に入る人は戸口の脇で待ちます。戸口とその手前では、体格に応じた肩幅を使い、各ステップの途中も含めて近くの歩行者との間隔を調べます。前の人が進めばその分だけ前進し、歩道を横切る人が進路をふさいでいる間は待ちます。歩道側に横へよけられる空間があれば、壁や縁石までの余裕を確かめてそちらへ進みます。初期配置でも戸口付近の間隔を保ちます。</p>
+      <p>一人が退出すると、同じステップに別の出入口から一人が登場します。出入口の幅と空きを考慮して入場位置を割り当て、混雑時は空きができるまで退出を待つため、シミュレーションの総人数は一定です。初回の配置だけは広いスポーン領域を使います。</p>
+      <p class="source">実装は <a href="#src-simulation">Simulation</a> と <a href="#src-layout">渋谷の出入口配置</a>を参照してください。</p>
     </section>
 
     <section id="parameters">
@@ -261,12 +263,12 @@ p′ = p + v′Δt
         <tr><td>初期人数 / 上限</td><td>1,000 / 20,000人</td><td><a href="#src-types">DEFAULT_CONFIG / MAX_AGENTS</a>。</td></tr>
         <tr><td>経路格子 / 余裕</td><td>渋谷：0.75m / 0.34m<br>他：1.5m / 0.58m</td><td><a href="#src-navigation">Navigation</a>。人物・境界の近傍索引とは別。</td></tr>
         <tr><td>渋谷の境界索引</td><td>行：1m / 区画：4m</td><td><a href="#src-urban">PolygonRegion</a>。包含・近接・線分判定の候補辺を絞る。</td></tr>
-        <tr><td>渋谷の目的地</td><td>5点</td><td><a href="#src-layout">layout.json</a>の明示的遷移表で次を選ぶ。</td></tr>
+        <tr><td>渋谷の目的地</td><td>建物入口・街路端</td><td><a href="#src-layout">layout.json</a>で通路の幅、歩道側の到達点、奥の端点を指定。</td></tr>
         <tr><td>近傍セル幅・半径</td><td>2.4m</td><td><a href="#src-grid">SpatialGrid</a>と<a href="#src-steering">Steering</a>。</td></tr>
         <tr><td>候補上限</td><td>96人</td><td>距離フィルタ前に数える。最近傍順ではない。</td></tr>
         <tr><td>基準歩行速度</td><td>1.35m/s</td><td>個人ごとに0.8〜1.2倍。Core許容範囲は0〜4m/s、UIは0.3〜3m/s。</td></tr>
         <tr><td>人物半径</td><td>0.25 × scale m</td><td>scaleは0.89〜1.13。半径は約0.223〜0.283m。歩道内判定・誘導・境界制約にはさらに0.015mを加える。</td></tr>
-        <tr><td>近距離反発の余裕</td><td>半径の和 + 0.34m</td><td>係数3.6、1組からの補正量上限2.4。</td></tr>
+        <tr><td>近距離反発の余裕</td><td>半径の和 + 0.34m</td><td>通常の係数は3.6。出入口を通行中の相手には8。1組からの補正量の上限は2.4。</td></tr>
         <tr><td>前方追従</td><td>1.8m以内</td><td>横方向は半径の和 + 0.2m以内。</td></tr>
         <tr><td>予測時間 / 余裕</td><td>1.6秒 / +0.35m</td><td>候補の現在位置は2.4m以内に限定。</td></tr>
         <tr><td>速度応答 / 加速度</td><td>0.3秒 / 3.8m/s²</td><td>境界による位置補正は別処理。</td></tr>
@@ -335,7 +337,7 @@ p′ = p + v′Δt
         <li id="src-mesh"><a href="https://github.com/shuichi/fluxity/blob/main/src/renderer/UrbanMesh.ts"><code>src/renderer/UrbanMesh.ts</code></a> — 地図に対応した静的メッシュのSHA-256検証・読込。</li>
         <li id="src-scramble"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/ScrambleGeometry.ts"><code>src/simulation/ScrambleGeometry.ts</code></a> — 旧合成交差点fixtureの区間判定・凸領域への投影。</li>
         <li id="src-signal"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/TrafficSignal.ts"><code>src/simulation/TrafficSignal.ts</code></a> — 自動周期と手動信号。</li>
-        <li id="src-shibuya"><a href="https://github.com/shuichi/fluxity/blob/main/src/scenarios/shibuya.ts"><code>src/scenarios/shibuya.ts</code></a> — PLATEAU地図と5目的地のシナリオ設定。</li>
+        <li id="src-shibuya"><a href="https://github.com/shuichi/fluxity/blob/main/src/scenarios/shibuya.ts"><code>src/scenarios/shibuya.ts</code></a> — PLATEAU地図と出入口のシナリオ設定。</li>
         <li id="src-agents"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/AgentData.ts"><code>src/simulation/AgentData.ts</code></a> — SoAと二重の運動状態。</li>
         <li id="src-worker"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/SimulationWorker.ts"><code>src/simulation/SimulationWorker.ts</code></a> — 固定刻み、追いつき処理、Snapshot転送。</li>
         <li id="src-timeline"><a href="https://github.com/shuichi/fluxity/blob/main/src/app/SnapshotTimeline.ts"><code>src/app/SnapshotTimeline.ts</code></a> — 2状態の保持と補間係数。</li>

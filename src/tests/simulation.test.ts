@@ -29,18 +29,18 @@ describe('deterministic, finite SoA simulation', () => {
     expect(snapshot(first)).toEqual(snapshot(second));
     expect(first.agents.current.x).not.toEqual(different.agents.current.x);
   });
-  it.each<ScenarioId>(['plaza', 'corridor', 'bottleneck', 'crossing'])('keeps %s agents finite, bounded and outside walls', scenario => {
+  it.each<ScenarioId>(['plaza', 'corridor', 'bottleneck', 'crossing'])('keeps %s agents on the floor or inside their assigned passage', scenario => {
     const simulation = new Simulation({ ...DEFAULT_CONFIG, scenario, count: 500 });
     for (let step = 0; step < 180; step++) simulation.step();
     const a = simulation.agents, state = a.current;
     for (let i = 0; i < a.count; i++) {
       expect(Number.isFinite(state.x[i] + state.z[i] + state.heading[i] + state.phase[i])).toBe(true);
       expect(Math.hypot(state.vx[i], state.vz[i])).toBeLessThanOrEqual(a.preferredSpeed[i] * 1.12 + 0.001);
-      expect(simulation.navigation.isFree(state.x[i], state.z[i], a.radius[i])).toBe(true);
+      expect(simulation.navigation.isFree(state.x[i], state.z[i], a.radius[i]) || simulation.isInPortalLane(i)).toBe(true);
     }
     expect(simulation.stats.meanSpeed).toBeGreaterThan(0.3);
   });
-  it('packs a consistent snapshot, IDs, appearances and actual velocity', () => {
+  it('packs a consistent snapshot with life generations, opacity, appearance and actual velocity', () => {
     const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 32 }); simulation.step();
     const data = snapshot(simulation), a = simulation.agents;
     expect(() => simulation.writeSnapshot(new Float32Array(10))).toThrow(RangeError);
@@ -48,7 +48,8 @@ describe('deterministic, finite SoA simulation', () => {
       const offset = i * SNAPSHOT_STRIDE;
       expect(data[offset]).toBe(a.current.x[i]); expect(data[offset + 1]).toBe(a.current.z[i]);
       expect(data[offset + 3]).toBeCloseTo(Math.hypot(a.current.vx[i], a.current.vz[i]), 5);
-      expect(data[offset + 5]).toBe(a.appearance[i]); expect(data[offset + 11]).toBe(i);
+      expect(data[offset + 5]).toBe(a.appearance[i]);
+      expect(data[offset + 11]).toBe(0); expect(data[offset + 12]).toBe(1);
       expect(data[offset + 6]).toBeGreaterThan(0.8);
     }
   });
@@ -116,12 +117,19 @@ describe('flow-field routing', () => {
     const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1, scenario: 'bottleneck' });
     const a = simulation.agents;
     a.current.x[0] = -30; a.current.z[0] = -30; a.current.vx[0] = 0; a.current.vz[0] = 0;
-    a.targetId[0] = 1; a.targetX[0] = 85; a.targetZ[0] = 0;
-    for (let step = 0; step < 3500 && simulation.arrivals === 0; step++) {
+    let crossedOpening = false;
+    for (let step = 0; step < 6500 && simulation.arrivals === 0; step++) {
       simulation.step();
-      expect(simulation.navigation.isFree(a.current.x[0], a.current.z[0], a.radius[0])).toBe(true);
+      if (Math.abs(a.current.x[0]) < 2) {
+        expect(Math.abs(a.current.z[0])).toBeLessThan(4 - a.radius[0]);
+        crossedOpening = true;
+      }
+      expect(simulation.navigation.isFree(a.current.x[0], a.current.z[0], a.radius[0]) || simulation.isInPortalLane(0)).toBe(true);
     }
+    expect(crossedOpening).toBe(true);
     expect(simulation.arrivals).toBe(1);
+    expect(a.current.x[0]).toBeLessThan(simulation.scenario.bounds.minX);
+    expect(a.targetId[0]).toBe(1);
   });
   it('routes around an obstructing wall through the bottleneck', () => {
     const navigation = new Navigation(getScenario('bottleneck'));

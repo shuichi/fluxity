@@ -1,4 +1,9 @@
-import type { Scenario } from '../types';
+import type { PedestrianPortal, Scenario } from '../types';
+
+const portals: PedestrianPortal[] = [
+  { id: 'west-end', kind: 'street', approach: { x: -93, z: 0 }, end: { x: -98, z: 0 }, width: 100 },
+  { id: 'east-end', kind: 'street', approach: { x: 93, z: 0 }, end: { x: 98, z: 0 }, width: 100, entry: false },
+];
 
 export const bottleneck: Scenario = {
   id: 'bottleneck', name: 'Bottleneck',
@@ -12,6 +17,8 @@ export const bottleneck: Scenario = {
     { x: -48, z: 0, width: 82, depth: 110 },
     { x: 48, z: 0, width: 82, depth: 110 },
   ],
-  targets: [{ x: -85, z: 0 }, { x: 85, z: 0 }],
+  portals,
+  targets: portals.map(portal => portal.approach),
   spawnTargets: [1, 1],
+  targetTransitions: [1, 0],
 };

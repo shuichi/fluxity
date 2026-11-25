@@ -12,6 +12,18 @@ export interface SignalState {
 export type Quality = 'performance' | 'balanced' | 'ultra';
 export type CameraView = 'perspective' | 'overview' | 'street';
 export interface Point2 { x: number; z: number }
+/** A reachable routing goal and its short, directed passage behind a facade or past a street edge. */
+export interface PedestrianPortal {
+  id: string;
+  kind: 'door' | 'street';
+  approach: Point2;
+  end: Point2;
+  width: number;
+  /** Optional public-side waiting point along a storefront on a busy sidewalk. */
+  queueApproach?: Point2;
+  /** Exit-only passage in a one-way pedestrian flow. */
+  entry?: boolean;
+}
 export interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number }
 export interface Zone { x: number; z: number; width: number; depth: number }
 export interface Obstacle extends Zone {
@@ -52,9 +64,11 @@ export interface Scenario {
   obstacles: Obstacle[];
   spawnZones: Zone[];
   targets: Point2[];
-  /** Target index for agents in each spawn zone. Omit for roaming. */
-  spawnTargets?: number[];
-  /** Explicit destination transitions for real-world layouts. */
+  /** When present, targets are the corresponding portal approaches, in the same order. */
+  portals?: PedestrianPortal[];
+  /** Initial destination per zone. An array samples among routes, with repeats giving a route more weight. */
+  spawnTargets?: (number | number[])[];
+  /** Next destination from each target, or the destination for a trip starting at that portal. */
   targetTransitions?: number[];
   targetSpread?: number;
   navigationCellSize?: number;
@@ -81,8 +95,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   count: 1000, seed: 42, scenario: 'shibuya',
   simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto',
 };
-/** Packed transferable Float32 data: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,id. */
-export const SNAPSHOT_STRIDE = 12;
+/** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity. */
+export const SNAPSHOT_STRIDE = 13;
 export const FIXED_DT = 1 / 30;
 export const MAX_AGENTS = 20000;
 export interface SnapshotMessage {

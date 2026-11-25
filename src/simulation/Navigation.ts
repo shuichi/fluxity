@@ -67,7 +67,7 @@ export class Navigation {
     this.cellSize = scenario.navigationCellSize ?? (this.urban ? 1 : 1.5);
     if (!Number.isFinite(this.cellSize) || this.cellSize < 0.25 || this.cellSize > 4) throw new Error('Invalid navigation cell size.');
     if (!scenario.targets.length || !scenario.spawnZones.length) throw new Error('A scenario requires destinations and spawn zones.');
-    for (const index of [...(scenario.spawnTargets ?? []), ...(scenario.targetTransitions ?? [])]) {
+    for (const index of [...(scenario.spawnTargets ?? []).flat(), ...(scenario.targetTransitions ?? [])]) {
       if (!Number.isInteger(index) || index < 0 || index >= scenario.targets.length) throw new Error('A scenario references an invalid destination.');
     }
     this.clearance = this.urban ? 0.34 : 0.58;

@@ -1,10 +1,10 @@
 import { Controls } from './Controls';
 import { StatsPanel } from './StatsPanel';
 import { SnapshotTimeline } from './SnapshotTimeline';
-import { WebGPURenderer } from '../renderer/WebGPURenderer';
+import { WebGPURenderer, type PickedPerson } from '../renderer/WebGPURenderer';
 import { getScenario } from '../scenarios';
 import {
-  DEFAULT_CONFIG, MAX_AGENTS,
+  DEFAULT_CONFIG, MAX_AGENTS, SNAPSHOT_STRIDE,
   type AppStats, type Quality, type SimulationConfig,
   type WorkerInput, type WorkerOutput,
 } from '../types';
@@ -42,6 +42,9 @@ export class App {
   private generation = 0;
   private scenarioRequest = 0;
   private sceneReady = false;
+  private followedPerson?: PickedPerson;
+  private pickRequest = 0;
+  private canPickPerson = false;
   private paused = false;
   private quality: Quality = 'balanced';
   private photographicAppearance = true;
@@ -93,9 +96,11 @@ export class App {
         this.renderer?.setPhotographicAppearance(enabled);
       },
       onCamera: view => {
+        this.leavePersonView();
         if (view === 'reset') this.renderer?.camera.reset();
         else this.renderer?.camera.setView(view);
       },
+      onReturnView: () => this.leavePersonView(),
       onBenchmark: () => this.startBenchmark(),
     });
     this.statsPanel = new StatsPanel(this.controls.statsElement);
@@ -105,7 +110,8 @@ export class App {
   async start(): Promise<void> {
     try {
       this.controls.setStatus('Connecting to your GPU', 'loading');
-      this.renderer = await WebGPURenderer.create(this.controls.canvas, message => this.fail(message));
+      this.renderer = await WebGPURenderer.create(this.controls.canvas, message => this.fail(message),
+        (x, y) => { void this.selectPerson(x, y); });
       if (this.destroyed || this.failed) { this.renderer.destroy(); this.renderer = null; return; }
       this.renderer.setPhotographicAppearance(this.photographicAppearance);
       this.worker = new Worker(new URL('../simulation/SimulationWorker.ts', import.meta.url), { type: 'module' });
@@ -120,6 +126,36 @@ export class App {
 
   private send(message: WorkerInput, transfer: Transferable[] = []): void {
     this.worker?.postMessage(message, transfer);
+  }
+
+  private async selectPerson(x: number, y: number): Promise<void> {
+    if (!this.renderer || !this.canPickPerson) return;
+    const request = ++this.pickRequest;
+    try {
+      const person = await this.renderer.pickPerson(x, y);
+      if (request !== this.pickRequest || !person
+        || !this.canFollow(person, this.timeline.alpha(performance.now(), this.config.simulationSpeed))) return;
+      this.followedPerson = person;
+      this.canPickPerson = false;
+      this.controls.setPersonView(true);
+    } catch (error) {
+      if (request === this.pickRequest) console.warn('[Fluxity] Could not read the selected pedestrian.', error);
+    }
+  }
+
+  private canFollow(person: PickedPerson, alpha: number): boolean {
+    const { previous, current } = this.timeline;
+    return !!(this.renderer && previous && current && current.data[person.id * SNAPSHOT_STRIDE + 11] === person.life
+      && this.renderer.canPlacePersonCamera(previous.data, current.data, person.id, alpha));
+  }
+
+  private leavePersonView(): void {
+    // A GPU read from the previous view or crowd must never select a person in its replacement.
+    this.pickRequest++;
+    this.canPickPerson = false;
+    if (!this.followedPerson) return;
+    this.followedPerson = undefined;
+    this.controls.setPersonView(false);
   }
 
   private configure(patch: Partial<SimulationConfig>, reset: boolean): void {
@@ -151,6 +187,7 @@ export class App {
     if (!this.renderer || this.failed || this.destroyed) return;
     const request = ++this.scenarioRequest;
     this.sceneReady = false;
+    this.leavePersonView();
     this.timeline.clear();
     this.generation++;
     this.sendPauseState();
@@ -174,6 +211,7 @@ export class App {
 
   private resetSimulation(): void {
     if (!this.worker || this.failed || !this.sceneReady) return;
+    this.leavePersonView();
     this.timeline.clear();
     this.generation++;
     this.stats.count = this.config.count;
@@ -214,10 +252,13 @@ export class App {
     const { previous, current } = this.timeline;
     if (previous && current) {
       try {
-        const render = this.renderer.render(previous.data, current.data, current.message.count,
-          this.timeline.alpha(now, this.config.simulationSpeed), {
-            quality: this.quality, debug: this.debug, signal: current.message.signal,
+        const person = this.followedPerson;
+        const alpha = this.timeline.alpha(now, this.config.simulationSpeed);
+        if (person && !this.canFollow(person, alpha)) this.leavePersonView();
+        const render = this.renderer.render(previous.data, current.data, current.message.count, alpha, {
+            quality: this.quality, debug: this.debug, signal: current.message.signal, followedId: this.followedPerson?.id,
           });
+        this.canPickPerson = !this.followedPerson;
         Object.assign(this.stats, render, {
           fps: 1000 / this.frameMs, frameMs: this.frameMs, count: current.message.count, paused: this.paused,
         });
@@ -309,6 +350,7 @@ export class App {
   private fail(message: string): void {
     if (this.failed || this.destroyed) return;
     this.failed = true;
+    this.leavePersonView();
     this.benchmark = null;
     console.error('[Fluxity]', message);
     cancelAnimationFrame(this.frameId);
@@ -322,6 +364,7 @@ export class App {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.leavePersonView();
     this.scenarioRequest++;
     cancelAnimationFrame(this.frameId);
     this.worker?.terminate();

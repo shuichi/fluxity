@@ -1,4 +1,9 @@
-import type { Scenario } from '../types';
+import type { PedestrianPortal, Scenario } from '../types';
+
+const portals: PedestrianPortal[] = [
+  { id: 'west-end', kind: 'street', approach: { x: -118, z: 0 }, end: { x: -123, z: 0 }, width: 50 },
+  { id: 'east-end', kind: 'street', approach: { x: 118, z: 0 }, end: { x: 123, z: 0 }, width: 50 },
+];
 
 export const corridor: Scenario = {
   id: 'corridor', name: 'Bidirectional Corridor',
@@ -12,6 +17,8 @@ export const corridor: Scenario = {
     { x: -58, z: 0, width: 112, depth: 50 },
     { x: 58, z: 0, width: 112, depth: 50 },
   ],
-  targets: [{ x: -111, z: 0 }, { x: 111, z: 0 }],
+  portals,
+  targets: portals.map(portal => portal.approach),
   spawnTargets: [1, 0],
+  targetTransitions: [1, 0],
 };

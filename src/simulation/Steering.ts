@@ -14,13 +14,15 @@ export interface LocalAvoidance {
 export class Steering implements LocalAvoidance {
   candidateChecks = 0;
   private readonly wallPush = { x: 0, z: 0 };
-  constructor(private readonly scenario: Scenario, private readonly urban?: UrbanGeometry) {}
+  constructor(private readonly scenario: Scenario, private readonly urban?: UrbanGeometry,
+    private readonly doorwayCells?: Uint8Array) {}
   compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity): void {
     const state = agents.current;
     const x = state.x[id], z = state.z[id], dirX = direction.x, dirZ = direction.z;
     const preferredSpeed = agents.preferredSpeed[id];
     let pushX = 0, pushZ = 0, lateral = 0, brake = 0;
     const cell = grid.cells[id], cx = cell % grid.columns, cz = Math.floor(cell / grid.columns);
+    let yieldX = 0, yieldZ = 0, yieldWeight = 0;
     let examined = 0;
     const range2 = grid.cellSize * grid.cellSize;
     // Bounded candidates ensure a pathological queue does not turn into an all-pairs loop.
@@ -46,9 +48,29 @@ export class Steering implements LocalAvoidance {
             dx = sign * 0.001; dz = sign * 0.0007; distance2 = dx * dx + dz * dz;
           }
           const distance = Math.sqrt(distance2), radius = agents.radius[id] + agents.radius[j];
+          // Give a person in the doorway room to pass even when they have slowed
+          // to a stop. Step toward the nearer edge of their line of travel.
+          if (this.doorwayCells?.[cell] && agents.portalStage[j]) {
+            const intentX = agents.preferredVX[j], intentZ = agents.preferredVZ[j];
+            const speed = Math.hypot(intentX, intentZ);
+            if (speed > 0.01) {
+              const ux = intentX / speed, uz = intentZ / speed;
+              const ahead = -dx * ux - dz * uz, side = -dx * uz + dz * ux;
+              const space = radius + 0.43;
+              if (ahead > 0 && ahead < 1.9 && Math.abs(side) < space) {
+                const weight = (1 - ahead / 2.2) * (1 - Math.abs(side) / space);
+                if (weight > yieldWeight) {
+                  const sign = side >= 0 ? 1 : -1;
+                  yieldX = uz * sign; yieldZ = -ux * sign; yieldWeight = weight;
+                }
+              }
+            }
+          }
           const personalSpace = radius + 0.34;
           if (distance < personalSpace) {
-            const strength = Math.min(2.4, (personalSpace - distance) * 3.6);
+            // Pedestrians on the public sidewalk yield to a walker committed to the narrow doorway.
+            const stiffness = agents.portalStage[j] ? 8 : 3.6;
+            const strength = Math.min(2.4, (personalSpace - distance) * stiffness);
             pushX -= dx / distance * strength; pushZ -= dz / distance * strength;
           }
           const forward = dx * dirX + dz * dirZ;
@@ -83,6 +105,8 @@ export class Steering implements LocalAvoidance {
     let desiredZ = dirZ * preferredSpeed * (1 - brake * Math.min(1, avoidance));
     desiredX += (pushX + dirZ * lateral) * avoidance;
     desiredZ += (pushZ - dirX * lateral) * avoidance;
+    desiredX += yieldX * yieldWeight * preferredSpeed * 2;
+    desiredZ += yieldZ * yieldWeight * preferredSpeed * 2;
     // A persistent gentle lateral drift helps congested pedestrians escape symmetric locks.
     if (agents.stalledTime[id] > 2 && preferredSpeed > 0) {
       desiredX += dirZ * 0.3; desiredZ -= dirX * 0.3;

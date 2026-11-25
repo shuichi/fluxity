@@ -55,17 +55,17 @@ Rendering interpolates one tick behind the latest simulation state. Heading foll
 
 ## Pedestrian signals
 
-Shibuya is the default scene, with 1,000 people. `Scenario.urbanMap` contains unioned sidewalk and walkable polygons with holes; buildings and traffic islands are excluded. `Scenario.scramble` contains five crosswalk segments and explicit signal directions. The importer builds both painted crossings and the navigable union from the same calibrated layout. Navigation uses a 0.75m grid within the 250m simulation bounds; the background covers 500m. The legacy synthetic crossing remains a regression fixture and uses `roadHalfWidth`. Other scenes retain their original behavior.
+Shibuya is the default scene, with 1,000 people. `Scenario.urbanMap` contains unioned sidewalk and walkable polygons with holes; buildings and traffic islands are excluded. `Scenario.scramble` contains five crosswalk segments and explicit signal directions. The importer builds both painted crossings and the navigable union from the same calibrated layout. Navigation uses a 0.75m grid within the 250m simulation bounds; the background covers 500m. The legacy synthetic crossing remains a regression fixture and uses `roadHalfWidth`.
 
 The automatic cycle uses 12 simulation seconds of red followed by 35 of green. These are demonstration timings, not the real Shibuya signal schedule. Manual Green/Red hold that state without resetting people or simulation time; returning to Auto rejoins the simulation-clock cycle. Pause and time scaling therefore affect the automatic cycle consistently.
 
 Red gates **new entry** from the sidewalk. Approaching agents decelerate, while local avoidance can still make room laterally. Agents already inside a crossing continue toward a sidewalk. A geometric final constraint prevents neighbor avoidance from pushing new arrivals into the road or anyone outside pedestrian surfaces. Boundary projection preserves tangential motion so people do not become pinned to the edge of a zebra. Heavy queues can still delay people clearing a crossing.
 
-The worker sends the confirmed `SignalState` (phase, remaining time, waiting and crossing counts) as snapshot metadata. The 48-byte per-agent ABI stays unchanged. Settings can publish a same-step snapshot while paused; exhausted pools mark a pending update and publish when a recycled buffer arrives. The UI and GPU signal lamps use this confirmed state. Lamps are vertex material IDs driven by the existing scene uniform, with no additional draw call or per-change geometry creation.
+The worker sends the confirmed `SignalState` (phase, remaining time, waiting and crossing counts) as snapshot metadata. Settings can publish a same-step snapshot while paused; exhausted pools mark a pending update and publish when a recycled buffer arrives. The UI and GPU signal lamps use this confirmed state. Lamps are vertex material IDs driven by the existing scene uniform, with no additional draw call or per-change geometry creation.
 
 ## Snapshot ABI
 
-Each agent occupies **12 Float32 values / 48 bytes**:
+Each pedestrian slot occupies **13 Float32 values / 52 bytes**.
 
 | Float offset | Value |
 | --- | --- |
@@ -77,7 +77,8 @@ Each agent occupies **12 Float32 values / 48 bytes**:
 | 6 | Body scale |
 | 7 | Animation clip ID |
 | 8, 9, 10 | Clothing tint RGB |
-| 11 | Stable agent ID |
+| 11 | Life generation, incremented when a slot is reused for a new trip |
+| 12 | Visibility through the entrance or exit passage (0–1) |
 
 This is a CPU transfer format. The renderer repacks visible instances into its WGSL-aligned storage layout. GPU structures use 16-byte lanes; the corresponding TypeScript stride and WGSL members are defined together in the renderer. No per-agent GPU resources or draw calls are created.
 

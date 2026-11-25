@@ -5,6 +5,8 @@ import { getScenario } from '../scenarios';
 import { AgentData } from './AgentData';
 import { Navigation } from './Navigation';
 import { SpatialGrid } from './SpatialGrid';
+import { PortalFlow } from './PortalFlow';
+import { DoorwayClearance, doorwayRadius } from './DoorwayClearance';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
 import { TrafficSignal } from './TrafficSignal';
@@ -31,6 +33,8 @@ export class Simulation {
   readonly stats: SimulationStatistics = { meanSpeed: 0, congestion: 0 };
   readonly avoidance: LocalAvoidance;
   private readonly traffic: TrafficSignal | undefined;
+  private readonly portals: PortalFlow | undefined;
+  private readonly doorways?: DoorwayClearance;
   stepCount = 0;
   time = 0;
   arrivals = 0;
@@ -48,7 +52,12 @@ export class Simulation {
     this.settings = { simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto' };
     this.traffic = this.navigation.scramble ? new TrafficSignal() : undefined;
     this.updateSettings(config);
-    this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban);
+    if (this.scenario.portals) {
+      const doors = this.scenario.portals.filter(portal => portal.kind === 'door');
+      if (doors.length) this.doorways = new DoorwayClearance(doors, this.grid, this.agents, this.navigation);
+      this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways);
+    }
+    this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells);
     this.initialize();
   }
   updateSettings(settings: Partial<SimulationSettings>): void {
@@ -61,24 +70,37 @@ export class Simulation {
     }
     for (let i = 0; i < this.agents.count; i++) this.agents.preferredSpeed[i] = this.agents.speedFactor[i] * this.settings.walkingSpeed;
   }
+  private readonly newPerson = (i: number): void => {
+    const a = this.agents;
+    a.scale[i] = this.random.range(0.89, 1.13);
+    a.radius[i] = a.scale[i] * 0.25; a.speedFactor[i] = this.random.range(0.8, 1.2);
+    a.preferredSpeed[i] = a.speedFactor[i] * this.settings.walkingSpeed;
+    a.appearance[i] = this.random.int(65535);
+    const color = PALETTE[this.random.int(PALETTE.length)];
+    a.tint.set(color, i * 3);
+  };
   private initialize(): void {
     const a = this.agents, state = a.current, b = this.scenario.bounds;
     const heads = new Int32Array(this.grid.counts.length); heads.fill(-1);
     const next = new Int32Array(a.count); next.fill(-1);
-    const cellsByZone = this.scenario.spawnZones.map(zone => this.navigation.spawnCells.filter(cell => {
+    // If rejection sampling runs out of space, distribute overflow on the open
+    // sidewalk. A doorway must start with enough room for the first person to pass.
+    const doorways = this.doorways;
+    const openCells = doorways ? this.navigation.spawnCells.filter(cell => {
+      const x = b.minX + (cell % this.navigation.columns + 0.5) * this.navigation.cellSize;
+      const z = b.minZ + (Math.floor(cell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
+      return !doorways.cells[this.grid.cellAt(x, z)];
+    }) : this.navigation.spawnCells;
+    const fallbackCells = openCells.length ? openCells : this.navigation.spawnCells;
+    const cellsByZone = this.scenario.spawnZones.map(zone => fallbackCells.filter(cell => {
       const x = b.minX + (cell % this.navigation.columns + 0.5) * this.navigation.cellSize;
       const z = b.minZ + (Math.floor(cell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
       return Math.abs(x - zone.x) <= zone.width / 2 && Math.abs(z - zone.z) <= zone.depth / 2;
     }));
     for (let i = 0; i < a.count; i++) {
-      a.id[i] = i; a.scale[i] = this.random.range(0.89, 1.13);
-      a.radius[i] = a.scale[i] * 0.25; a.speedFactor[i] = this.random.range(0.8, 1.2);
-      a.preferredSpeed[i] = a.speedFactor[i] * this.settings.walkingSpeed;
-      a.appearance[i] = this.random.int(65535);
-      const color = PALETTE[this.random.int(PALETTE.length)];
-      a.tint.set(color, i * 3);
+      a.id[i] = i; this.newPerson(i);
       const zoneIndex = i % this.scenario.spawnZones.length, zone = this.scenario.spawnZones[zoneIndex];
-      let x = 0, z = 0, cell = 0;
+      let x = 0, z = 0, cell = 0, placed = false;
       // Deterministic rejection reduces initial overlap; fallback is bounded in dense scenarios.
       for (let attempt = 0; attempt < 100; attempt++) {
         x = this.random.range(zone.x - zone.width * 0.5, zone.x + zone.width * 0.5);
@@ -91,24 +113,30 @@ export class Simulation {
         for (let oz = -1; oz <= 1 && !close; oz++) for (let ox = -1; ox <= 1 && !close; ox++) {
           const nx = cx + ox, nz = cz + oz;
           if (nx < 0 || nx >= this.grid.columns || nz < 0 || nz >= this.grid.rows) continue;
-          for (let j = heads[nz * this.grid.columns + nx]; j >= 0; j = next[j]) {
+          const neighborCell = nz * this.grid.columns + nx;
+          const nearDoor = doorways && (doorways.cells[cell] || doorways.cells[neighborCell]);
+          if (!nearDoor && attempt > 90) continue;
+          for (let j = heads[neighborCell]; j >= 0; j = next[j]) {
             const dx = state.x[j] - x, dz = state.z[j] - z;
-            const separation = (a.radius[i] + a.radius[j]) * (attempt > 60 ? 0.65 : 1.1);
+            const separation = nearDoor ? doorwayRadius(a.scale[i]) + doorwayRadius(a.scale[j]) + 0.001
+              : (a.radius[i] + a.radius[j]) * (attempt > 60 ? 0.65 : 1.1);
             if (dx * dx + dz * dz < separation * separation) { close = true; break; }
           }
         }
-        if (!close || attempt > 90) break;
+        if (!close) { placed = true; break; }
       }
       // A prevalidated finite list avoids unbounded searches on maps with empty courtyards.
-      if (!this.navigation.isSpawnable(x, z, a.radius[i] + 0.02)) {
-        const candidates = cellsByZone[zoneIndex].length ? cellsByZone[zoneIndex] : this.navigation.spawnCells;
+      if (!placed) {
+        const candidates = cellsByZone[zoneIndex].length ? cellsByZone[zoneIndex] : fallbackCells;
         const freeCell = candidates[this.random.int(candidates.length)];
         x = b.minX + ((freeCell % this.navigation.columns) + 0.5) * this.navigation.cellSize;
         z = b.minZ + (Math.floor(freeCell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
         cell = this.grid.cellAt(x, z);
       }
       state.x[i] = x; state.z[i] = z; next[i] = heads[cell]; heads[cell] = i;
-      const target = this.scenario.spawnTargets?.[zoneIndex] ?? this.random.int(this.scenario.targets.length);
+      const routes = this.scenario.spawnTargets?.[zoneIndex];
+      const selected = Array.isArray(routes) ? routes[this.random.int(routes.length)] : routes;
+      const target = selected ?? this.random.int(this.scenario.targets.length);
       this.assignTarget(i, target);
       this.navigation.direction(x, z, a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, a.radius[i] + 0.015);
       state.heading[i] = Math.atan2(this.direction.x, this.direction.z);
@@ -119,6 +147,7 @@ export class Simulation {
     this.grid.rebuild(state.x, state.z, a.count);
   }
   private assignTarget(id: number, targetId: number): void {
+    if (this.portals) { this.portals.assignTarget(id, targetId); return; }
     const a = this.agents, target = this.scenario.targets[targetId], b = this.scenario.bounds;
     a.targetId[id] = targetId;
     let x = target.x, z = target.z;
@@ -152,9 +181,29 @@ export class Simulation {
     }
     this.arrivals++;
   }
+  isInPassage(id: number): boolean { return this.portals?.inPassage(id) ?? false; }
+  isInPortalLane(id: number): boolean { return this.portals?.inLane(id) ?? false; }
+
+  private writeMotion(i: number, dt: number, x: number, z: number): number {
+    const a = this.agents, read = a.current, write = a.next;
+    const vx = (x - read.x[i]) / dt, vz = (z - read.z[i]) / dt;
+    const speed = Math.hypot(vx, vz);
+    let heading = read.heading[i];
+    if (speed > 0.045) {
+      const desiredHeading = Math.atan2(vx, vz);
+      let difference = ((desiredHeading - heading + Math.PI) % TAU + TAU) % TAU - Math.PI;
+      difference = Math.max(-3.5 * dt, Math.min(3.5 * dt, difference));
+      heading += difference;
+    }
+    write.x[i] = x; write.z[i] = z; write.vx[i] = vx; write.vz[i] = vz; write.heading[i] = heading;
+    // Unbounded phase avoids interpolation seams; stride length is measured in world meters.
+    write.phase[i] = read.phase[i] + speed * dt * 4.5;
+    a.stalledTime[i] = speed < a.preferredSpeed[i] * 0.2 ? a.stalledTime[i] + dt : 0;
+    return speed;
+  }
   step(dt = FIXED_DT): void {
     if (!Number.isFinite(dt) || dt <= 0 || dt > 0.1) throw new RangeError('Simulation step must be between 0 and 0.1 seconds.');
-    const a = this.agents, read = a.current, write = a.next;
+    const a = this.agents, read = a.current;
     this.traffic?.update(this.time + dt);
     const scramble = this.navigation.scramble;
     const red = this.signal?.phase === 'red';
@@ -167,8 +216,16 @@ export class Simulation {
       // has only partly cleared the exit curb must keep moving onto the sidewalk.
       const radius = a.radius[i] + 0.015;
       const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];
-      if (tx * tx + tz * tz < 10) this.nextTarget(i);
+      if (this.portals) {
+        if (this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
+          const speed = this.writeMotion(i, dt, this.projected.x, this.projected.z);
+          totalSpeed += speed;
+          if (speed < a.preferredSpeed[i] * 0.45) stopped++;
+          continue;
+        }
+      } else if (tx * tx + tz * tz < 10) this.nextTarget(i);
       this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius);
+      if (this.portals?.waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
       // Existing crossers always clear the road. Only curb-side entry is gated by red.
       const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
       if (scramble && sidewalkOnly && scramble.brakeAtCurb(read.x[i], read.z[i], this.direction, radius)) waiting++;
@@ -200,23 +257,19 @@ export class Simulation {
       if (scramble) {
         scramble.constrain(read.x[i], read.z[i], x, z, radius, sidewalkOnly, this.projected);
         x = this.projected.x; z = this.projected.z;
-        if (!scramble.isSidewalk(x, z, radius)) crossing++;
       }
-      vx = (x - read.x[i]) / dt; vz = (z - read.z[i]) / dt;
-      const speed = Math.hypot(vx, vz);
-      let heading = read.heading[i];
-      if (speed > 0.045) {
-        const desiredHeading = Math.atan2(vx, vz);
-        let difference = ((desiredHeading - heading + Math.PI) % TAU + TAU) % TAU - Math.PI;
-        difference = Math.max(-3.5 * dt, Math.min(3.5 * dt, difference));
-        heading += difference;
+      if (this.doorways) {
+        this.doorways.limit(i, x, z, dt, this.projected, sidewalkOnly);
+        x = this.projected.x; z = this.projected.z;
       }
-      write.x[i] = x; write.z[i] = z; write.vx[i] = vx; write.vz[i] = vz; write.heading[i] = heading;
-      // Unbounded phase avoids interpolation seams; stride length is measured in world meters.
-      write.phase[i] = read.phase[i] + speed * dt * 4.5;
-      a.stalledTime[i] = speed < a.preferredSpeed[i] * 0.2 ? a.stalledTime[i] + dt : 0;
+      if (scramble && !scramble.isSidewalk(x, z, radius)) crossing++;
+      const speed = this.writeMotion(i, dt, x, z);
       totalSpeed += speed;
       if (speed < a.preferredSpeed[i] * 0.45) stopped++;
+    }
+    if (this.portals && this.portals.transferCount) {
+      this.arrivals += this.portals.transferCount;
+      this.portals.replaceArrivals(this.newPerson);
     }
     a.swap(); this.stepCount++; this.time += dt;
     this.stats.meanSpeed = totalSpeed / a.count; this.stats.congestion = stopped / a.count;
@@ -231,7 +284,7 @@ export class Simulation {
       target[offset + 3] = speed; target[offset + 4] = state.phase[i]; target[offset + 5] = a.appearance[i];
       target[offset + 6] = a.scale[i]; target[offset + 7] = speed < 0.06 ? 0 : speed > 2.2 ? 2 : 1;
       target[offset + 8] = a.tint[i * 3]; target[offset + 9] = a.tint[i * 3 + 1]; target[offset + 10] = a.tint[i * 3 + 2];
-      target[offset + 11] = i;
+      target[offset + 11] = a.generation[i]; target[offset + 12] = a.opacity[i];
     }
   }
 }

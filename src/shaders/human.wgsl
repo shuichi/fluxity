@@ -25,6 +25,12 @@ struct VertexOutput {
   @location(0) normal: vec3<f32>,
   @location(1) color: vec3<f32>,
   @location(2) world: vec3<f32>,
+  @location(3) @interpolate(flat) personId: u32,
+  @location(4) @interpolate(flat) opacity: f32,
+};
+struct FragmentOutput {
+  @location(0) color: vec4<f32>,
+  @location(1) personId: u32,
 };
 fn rotateX(v: vec3<f32>, a: f32) -> vec3<f32> {
   let c = cos(a); let s = sin(a);
@@ -107,13 +113,23 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
   output.normal = normalize(n);
   output.world = p;
   output.color = color;
+  // Zero is background. extra.x is the simulation ID, independent of LOD packing.
+  output.personId = u32(agent.extra.x) + 1u;
+  output.opacity = agent.extra.z;
   return output;
 }
 
-@fragment fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+@fragment fn fragmentMain(input: VertexOutput) -> FragmentOutput {
+  // Screen-door coverage fades overlapping meshes without sorting them. Discarded
+  // fragments also leave depth and the picking attachment untouched.
+  if (input.opacity < 1.0) {
+    let pixel = floor(input.position.xy);
+    let threshold = fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+    if (threshold >= input.opacity) { discard; }
+  }
   let diffuse = max(dot(normalize(input.normal), scene.sun.xyz), 0.0);
   let shade = scene.sun.w + (1.0 - scene.sun.w) * diffuse;
   let distance = length(input.world - scene.camera.xyz);
   let fogAmount = smoothstep(scene.settings.w, scene.fog.w, distance) * 0.72;
-  return vec4<f32>(mix(input.color * shade, scene.fog.rgb, fogAmount), 1.0);
+  return FragmentOutput(vec4<f32>(mix(input.color * shade, scene.fog.rgb, fogAmount), 1.0), input.personId);
 }

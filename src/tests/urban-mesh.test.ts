@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UrbanMap } from '../types';
+import { SNAPSHOT_STRIDE, type UrbanMap } from '../types';
 import { decodeUrbanMesh, decodeAppearanceCoordinates, mergeEnvironmentMeshes, UrbanMeshLoader, urbanAssetURL } from '../renderer/UrbanMesh';
 import { WebGPURenderer } from '../renderer/WebGPURenderer';
 import { plaza } from '../scenarios/plaza';
@@ -212,14 +212,15 @@ describe('PLATEAU static mesh loading', () => {
 async function gpuHarness() {
   const buffers: { destroy: ReturnType<typeof vi.fn> }[] = [];
   const textures: { destroy: ReturnType<typeof vi.fn> }[] = [];
-  const context = { configure: vi.fn(), unconfigure: vi.fn() };
+  const context = { configure: vi.fn(), unconfigure: vi.fn(), getCurrentTexture: () => ({ createView: () => ({}) }) };
+  const copyTextureToBuffer = vi.fn();
   const limits = { maxStorageBufferBindingSize: 128 * 1024 * 1024, maxBufferSize: 256 * 1024 * 1024, maxStorageBuffersPerShaderStage: 8,
     maxTextureDimension2D: 8192, maxTextureArrayLayers: 256 };
   const device = Object.assign(new EventTarget(), {
     limits, lost: new Promise(() => {}), destroy: vi.fn(),
-    queue: { writeTexture: vi.fn(), copyExternalImageToTexture: vi.fn(), submit: vi.fn() },
+    queue: { writeBuffer: vi.fn(), writeTexture: vi.fn(), copyExternalImageToTexture: vi.fn(), submit: vi.fn() },
     createBuffer: vi.fn(({ size }: { size: number }) => {
-      const buffer = { getMappedRange: () => new ArrayBuffer(size), unmap: vi.fn(), destroy: vi.fn() };
+      const buffer = { getMappedRange: () => new ArrayBuffer(size), mapAsync: vi.fn(async () => {}), unmap: vi.fn(), destroy: vi.fn() };
       buffers.push(buffer); return buffer;
     }),
     createBindGroupLayout: () => ({}), createBindGroup: () => ({}), createPipelineLayout: () => ({}),
@@ -229,24 +230,113 @@ async function gpuHarness() {
       textures.push(texture); return texture;
     }),
     createRenderPipeline: () => ({ getBindGroupLayout: () => ({}) }),
-    createCommandEncoder: () => ({ finish: () => ({}), beginRenderPass: () => ({
-      setPipeline: vi.fn(), setBindGroup: vi.fn(), draw: vi.fn(), end: vi.fn(),
+    createCommandEncoder: () => ({ copyTextureToBuffer, finish: () => ({}), beginRenderPass: () => ({
+      setPipeline: vi.fn(), setBindGroup: vi.fn(), setVertexBuffer: vi.fn(), setIndexBuffer: vi.fn(),
+      draw: vi.fn(), drawIndexed: vi.fn(), end: vi.fn(),
     }) }),
     createShaderModule: () => ({ getCompilationInfo: async () => ({ messages: [] }) }),
     pushErrorScope: vi.fn(), popErrorScope: async () => null, createRenderPipelineAsync: async () => ({}),
   });
-  vi.stubGlobal('GPUBufferUsage', { VERTEX: 1, INDEX: 2, UNIFORM: 4, COPY_DST: 8, STORAGE: 16 });
+  vi.stubGlobal('GPUBufferUsage', { VERTEX: 1, INDEX: 2, UNIFORM: 4, COPY_DST: 8, STORAGE: 16, MAP_READ: 32 });
+  vi.stubGlobal('GPUMapMode', { READ: 1 });
   vi.stubGlobal('GPUShaderStage', { VERTEX: 1, FRAGMENT: 2 });
-  vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 1, COPY_DST: 2, RENDER_ATTACHMENT: 4 });
+  vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 1, COPY_DST: 2, RENDER_ATTACHMENT: 4, COPY_SRC: 8 });
   vi.stubGlobal('window', { isSecureContext: true });
   vi.stubGlobal('document', { baseURI: 'https://example.com/fluxity/' });
   vi.stubGlobal('navigator', { gpu: {
     requestAdapter: async () => ({ limits, features: new Set(), requestDevice: async () => device }),
     getPreferredCanvasFormat: () => 'bgra8unorm',
   } });
-  const canvas = Object.assign(new EventTarget(), { getContext: () => context });
-  return { renderer: await WebGPURenderer.create(canvas as unknown as HTMLCanvasElement), buffers, textures, device };
+  const canvas = Object.assign(new EventTarget(), {
+    getContext: () => context, getBoundingClientRect: () => ({ left: 12, top: 68, width: 640, height: 400 }),
+  });
+  return { renderer: await WebGPURenderer.create(canvas as unknown as HTMLCanvasElement), buffers, textures, device, copyTextureToBuffer };
 }
+
+describe('pedestrian picking', () => {
+  it('lets the inter-frame eye pose approach the threshold only until the near plane reaches the backing', async () => {
+    const { renderer } = await gpuHarness();
+    renderer.setScenario(plaza);
+    const door = plaza.portals!.find(p => p.kind === 'door')!;
+    const normal = Math.sign(door.approach.z - door.end.z);
+    const outside = new Float32Array(SNAPSHOT_STRIDE), hidden = outside.slice();
+    outside[0] = hidden[0] = door.end.x;
+    outside[1] = door.end.z + normal * 1.45;
+    hidden[1] = door.end.z + normal * 0.65;
+    expect(renderer.canPlacePersonCamera(outside, hidden, 0, 0.25)).toBe(true);
+    expect(renderer.canPlacePersonCamera(outside, hidden, 0, 0.6)).toBe(false);
+    expect(renderer.canPlacePersonCamera(hidden, outside, 0, 0.15)).toBe(false);
+    expect(renderer.canPlacePersonCamera(hidden, outside, 0, 0.9)).toBe(true);
+    // A new life samples the new position immediately, even across skipped snapshots.
+    hidden[11] = 1;
+    expect(renderer.canPlacePersonCamera(outside, hidden, 0, 0)).toBe(false);
+    hidden[0] += door.width / 2 + 0.1;
+    expect(renderer.canPlacePersonCamera(outside, hidden, 0, 1)).toBe(true);
+    renderer.destroy();
+  });
+
+  it('reads the life that was drawn at click time while another frame hides the replacement', async () => {
+    const { renderer, device } = await gpuHarness();
+    const frame = new Float32Array(SNAPSHOT_STRIDE);
+    frame[6] = 1; frame[11] = 7; frame[12] = 1;
+    const options = { quality: 'balanced' as const, debug: false };
+    expect(renderer.render(frame, frame, 1, 1, options).visible).toBe(1);
+    let finish!: () => void;
+    device.createBuffer.mockReturnValueOnce({
+      getMappedRange: () => new Uint16Array([1, 0]).buffer,
+      mapAsync: vi.fn(() => new Promise<void>(resolve => { finish = resolve; })),
+      unmap: vi.fn(), destroy: vi.fn(),
+    });
+    const pick = renderer.pickPerson(130, 256);
+    const next = frame.slice();
+    next[11] = 8; next[12] = 0;
+    expect(renderer.render(frame, next, 1, 0.2, options).visible).toBe(0);
+    next[12] = 1;
+    expect(renderer.render(next, next, 1, 1, options).visible).toBe(1);
+    finish();
+    expect(await pick).toEqual({ id: 0, life: 7 });
+    renderer.destroy();
+  });
+
+  it('renders the other pedestrian from the interpolated eye position of the selected one', async () => {
+    const { renderer } = await gpuHarness();
+    const previous = new Float32Array(2 * SNAPSHOT_STRIDE);
+    previous[6] = 1.1;
+    previous[12] = 1;
+    previous[SNAPSHOT_STRIDE + 1] = 8;
+    previous[SNAPSHOT_STRIDE + 6] = 1;
+    previous[SNAPSHOT_STRIDE + 12] = 1;
+    const current = previous.slice();
+    current[0] = 2;
+    const stats = renderer.render(previous, current, 2, 0.5, { quality: 'balanced', debug: false, followedId: 0 });
+    expect(renderer.camera.position[0]).toBe(1);
+    expect(renderer.camera.position[1]).toBeCloseTo(1.65 * 1.1);
+    expect(stats.visible).toBe(1);
+    renderer.destroy();
+  });
+
+  it('reads the clicked render pixel at reduced resolution, preserving ID zero and background', async () => {
+    const { renderer, device, copyTextureToBuffer } = await gpuHarness();
+    expect(await renderer.pickPerson(130, 256)).toBeNull();
+    renderer.render(new Float32Array(), new Float32Array(), 0, 1, { quality: 'performance', debug: false });
+    expect(await renderer.pickPerson(652, 256)).toBeNull();
+    expect(copyTextureToBuffer).not.toHaveBeenCalled();
+    for (const [encodedId, expected] of [[0, null], [1, 0], [20000, 19999]] as const) {
+      const pixel = {
+        getMappedRange: () => new Uint16Array([encodedId, 0]).buffer,
+        mapAsync: vi.fn(async () => {}), unmap: vi.fn(), destroy: vi.fn(),
+      };
+      device.createBuffer.mockReturnValueOnce(pixel);
+      expect(await renderer.pickPerson(130, 256)).toEqual(expected === null ? null : { id: expected, life: 0 });
+      expect(copyTextureToBuffer).toHaveBeenLastCalledWith(
+        expect.objectContaining({ origin: [88, 141] }), { buffer: pixel }, [1, 1],
+      );
+      expect(pixel.destroy).toHaveBeenCalledOnce();
+    }
+    renderer.destroy();
+    expect(await renderer.pickPerson(130, 256)).toBeNull();
+  });
+});
 
 describe('scenery GPU lifetime', () => {
   it('never uploads a late map over a newer scene and destroys all allocated buffers exactly once', async () => {

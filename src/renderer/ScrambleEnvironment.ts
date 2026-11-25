@@ -1,5 +1,6 @@
 import { MeshBuilder, TAU } from '../math/geometry';
 import type { Point2, Scenario } from '../types';
+import { addDoorways } from './Doorways';
 
 // Alpha is a material ID, not opacity: 1 legacy paving, 2 road paint, 3 illuminated signage, 4 mapped paving,
 // -1 red pedestrian lamp, -2 green pedestrian lamp. The whole scene stays one draw.
@@ -27,8 +28,8 @@ export function createScrambleEnvironment(scenario: Scenario) {
   if (!scramble) throw new Error('A scramble environment requires shared road geometry.');
   const mesh = new MeshBuilder(10);
   // PLATEAU buildings, surfaces and clipped zebra paint are already in the static asset.
-  // Only the independently shaded signal fixtures are generated at runtime.
   if (scenario.urbanMap) {
+    addDoorways(mesh, scenario.portals);
     for (const signal of scramble.signalPositions) addSignal(signal);
     return mesh.finish();
   }

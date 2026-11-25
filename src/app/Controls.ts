@@ -8,6 +8,7 @@ export interface ControlCallbacks {
   onAppearance: (photographic: boolean) => void;
   onDebug: (enabled: boolean) => void;
   onCamera: (view: CameraView | 'reset') => void;
+  onReturnView: () => void;
   onBenchmark: () => void;
 }
 
@@ -29,6 +30,7 @@ const icons = {
   street: icon('<circle cx="12" cy="5" r="2"/><path d="m7 12 5-3 5 3M12 9v6m-4 6 4-6 4 6"/>'),
   sliders: icon('<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
   arrow: icon('<path d="M5 12h14m-6-6 6 6-6 6"/>'),
+  back: icon('<path d="M20 12H4m7-7-7 7 7 7"/>'),
   close: icon('<path d="m6 6 12 12M6 18 18 6"/>'),
   chart: icon('<path d="M4 4v16h16M8 16v-5m5 5V7m5 9v-8"/>'),
   mouse: icon('<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v6"/>'),
@@ -42,6 +44,8 @@ const scenarioDetails: Record<ScenarioId, { index: string; name: string; descrip
   bottleneck: { index: '04', name: 'Bottleneck', description: 'When movement meets resistance.', note: 'Narrow passage · Emerging congestion' },
   crossing: { index: '05', name: 'Crossing Flow', description: 'Where individual paths intersect.', note: 'Crossing streams · Local avoidance' },
 };
+
+const personPickHint = 'Select a person for first-person view';
 
 export class Controls {
   readonly canvas: HTMLCanvasElement;
@@ -69,7 +73,7 @@ export class Controls {
         </div>
       </header>
       <main class="workspace" aria-label="Interactive crowd simulation">
-        <canvas id="scene" aria-label="Interactive three-dimensional crowd. Drag to orbit, right-drag to pan, scroll to zoom." tabindex="0"></canvas>
+        <canvas id="scene" aria-label="Interactive three-dimensional crowd" aria-describedby="camera-hint orbit-hint" tabindex="0"></canvas>
         <div class="scene-shade" aria-hidden="true"></div>
         <aside class="control-panel" id="control-panel" aria-label="Simulation controls">
           <div class="panel-heading"><span class="eyebrow">SIMULATION</span><span class="panel-number">01—05</span></div>
@@ -118,8 +122,22 @@ export class Controls {
           <div class="signal-badge-metrics"><span>Waiting <b id="signal-waiting">—</b></span><span>Crossing <b id="signal-crossing">—</b></span></div>
         </div>
         <span class="visually-hidden" id="signal-announcement" role="status" aria-live="polite" aria-atomic="true"></span>
-        <nav class="camera-toolbar" aria-label="Camera views"><span class="camera-label">VIEW</span><div class="camera-buttons"><button class="icon-button active" data-camera="perspective" aria-label="Perspective view" aria-pressed="true" title="Perspective">${icons.perspective}</button><button class="icon-button" data-camera="overview" aria-label="Overhead view" aria-pressed="false" title="Overhead">${icons.overview}</button><button class="icon-button" data-camera="street" aria-label="Street level view" aria-pressed="false" title="Street level">${icons.street}</button><span class="toolbar-divider"></span><button class="icon-button" data-camera="reset" aria-label="Reset camera" title="Reset camera">${icons.reset}</button></div></nav>
-        <div class="navigation-hint">${icons.mouse}<div><span><b>Drag</b> to orbit <i>·</i> <b>Scroll</b> to zoom</span><span><b>Right drag</b> to pan <i>·</i> <kbd>space</kbd> to pause</span></div></div>
+        <nav class="camera-toolbar" aria-label="Camera views">
+          <span class="camera-label">VIEW</span>
+          <div class="camera-buttons" id="camera-presets">
+            <button class="icon-button active" data-camera="perspective" aria-label="Perspective view" aria-pressed="true" title="Perspective">${icons.perspective}</button>
+            <button class="icon-button" data-camera="overview" aria-label="Overhead view" aria-pressed="false" title="Overhead">${icons.overview}</button>
+            <button class="icon-button" data-camera="street" aria-label="Street level view" aria-pressed="false" title="Street level">${icons.street}</button>
+            <span class="toolbar-divider"></span>
+            <button class="icon-button" data-camera="reset" aria-label="Reset camera" title="Reset camera">${icons.reset}</button>
+          </div>
+          <div class="camera-buttons" id="person-view-controls" hidden>
+            <button class="icon-button" id="return-view" type="button" aria-label="Return to previous view" aria-keyshortcuts="Escape" title="Return to previous view (Esc)">${icons.back}</button>
+            <span class="person-view-label">First person</span>
+          </div>
+          <span class="camera-hint" id="camera-hint" role="status">${personPickHint}</span>
+        </nav>
+        <div class="navigation-hint" id="orbit-hint">${icons.mouse}<div><span><b>Drag</b> to orbit <i>·</i> <b>Scroll</b> to zoom</span><span><b>Right drag</b> to pan <i>·</i> <kbd>space</kbd> to pause</span></div></div>
         <div id="stats"></div>
         <div class="loading-overlay" id="loading-overlay" role="status"><span class="loader-symbol" aria-hidden="true"><i></i><i></i><i></i></span><h2>Setting Shibuya in motion</h2><p id="loading-message">Preparing WebGPU, the city map and ${config.count.toLocaleString('en-US')} pedestrians.</p></div>
         <div class="error-overlay" id="error-overlay" role="alert" hidden><div class="error-card"><span class="error-icon">${icons.perspective}</span><span class="eyebrow">RENDERER UNAVAILABLE</span><h2>This city needs WebGPU.</h2><p id="error-message"></p><p class="error-help">Use a current desktop Chrome or Edge with hardware acceleration enabled. WebGPU requires HTTPS or localhost.</p><button class="primary-button" id="retry-button">${icons.reset}<span>Try again</span></button><span class="error-detail">No WebGL fallback is used.</span></div></div>
@@ -190,6 +208,7 @@ export class Controls {
       this.setCameraActive(view === 'reset' ? 'perspective' : view);
       callbacks.onCamera(view);
     }));
+    on(this.get('return-view'), 'click', () => callbacks.onReturnView());
     on(this.get('benchmark-button'), 'click', () => {
       this.get('benchmark-panel').hidden = false;
       callbacks.onBenchmark();
@@ -212,8 +231,14 @@ export class Controls {
     on(this.get('retry-button'), 'click', () => location.reload());
     on(window, 'keydown', event => {
       const key = event as KeyboardEvent;
+      if (key.defaultPrevented || key.repeat || key.altKey || key.ctrlKey || key.metaKey) return;
+      if (key.key === 'Escape' && !this.get('person-view-controls').hidden) {
+        key.preventDefault();
+        callbacks.onReturnView();
+        return;
+      }
       const target = key.target as HTMLElement | null;
-      if (target?.matches('input, select, textarea, button, summary, [contenteditable]') || key.repeat || key.altKey || key.ctrlKey || key.metaKey) return;
+      if (target?.matches('input, select, textarea, button, summary, [contenteditable]')) return;
       if (key.code === 'Space') {
         key.preventDefault();
         if (!this.get<HTMLButtonElement>('pause-button').disabled) callbacks.onPause();
@@ -314,6 +339,18 @@ export class Controls {
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     });
+  }
+
+  setPersonView(active: boolean): void {
+    const controls = this.get('person-view-controls');
+    if (controls.hidden === !active) return;
+    const returnFocusToScene = !active && controls.contains(document.activeElement);
+    controls.hidden = !active;
+    this.get('camera-presets').hidden = active;
+    this.get('orbit-hint').hidden = active;
+    this.get('camera-hint').textContent = active ? 'Back arrow or Esc to return' : personPickHint;
+    this.canvas.setAttribute('aria-describedby', active ? 'camera-hint' : 'camera-hint orbit-hint');
+    if (returnFocusToScene) this.canvas.focus({ preventScroll: true });
   }
 
   setStatus(text: string, kind: 'loading' | 'ready' | 'error' = 'ready'): void {
