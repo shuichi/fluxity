@@ -13,13 +13,18 @@ import { DoorwayHeadway } from './DoorwayHeadway';
 import { PortalDeadlockRecovery } from './PortalDeadlockRecovery';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
-import { TrafficSignal } from './TrafficSignal';
+import { parseSignalMode, TrafficSignal } from './TrafficSignal';
 import { PedestrianAttention } from './PedestrianAttention';
 import { EncounterState } from './EncounterState';
+import { SidewalkPassing } from './SidewalkPassing';
 import { CrossingClearance } from './CrossingClearance';
 import { CrosswalkFlow } from './CrosswalkFlow';
+import { VehicleTraffic } from './VehicleTraffic';
 
 const TAU = Math.PI * 2;
+const VEHICLES_STOPPED = { eastWest: 'red', northSouth: 'red' } as const;
+const MAX_SCALE = 1.13;
+const RADIUS_AT_UNIT_SCALE = 0.25;
 const PALETTE = [
   [0.20, 0.35, 0.34], [0.79, 0.43, 0.30], [0.88, 0.76, 0.55], [0.33, 0.43, 0.55],
   [0.71, 0.72, 0.61], [0.35, 0.29, 0.29], [0.87, 0.85, 0.76], [0.55, 0.63, 0.48],
@@ -43,6 +48,7 @@ export class Simulation {
   readonly attention: PedestrianAttention;
   readonly encounters: EncounterState;
   private readonly traffic: TrafficSignal | undefined;
+  private readonly vehicles?: VehicleTraffic;
   private readonly crossings?: CrossingClearance;
   private readonly crosswalkFlow?: CrosswalkFlow;
   private readonly portals: PortalFlow | undefined;
@@ -50,6 +56,7 @@ export class Simulation {
   private readonly doorways?: DoorwayClearance;
   private readonly courtesy?: DoorwayCourtesy;
   private readonly headway?: DoorwayHeadway;
+  private readonly sidewalkPassing?: SidewalkPassing;
   private readonly recoveryByTarget: (PortalDeadlockRecovery | undefined)[] = [];
   private recoveryEnabled = true;
   private recoveryPortalId?: string;
@@ -61,6 +68,7 @@ export class Simulation {
   private readonly projected = { x: 0, z: 0 };
 
   get signal(): SignalState | undefined { return this.traffic?.state; }
+  get vehicleCapacity(): number { return this.vehicles?.capacity ?? 0; }
   isPortalDeadlockActive(target: number): boolean { return this.recoveryByTarget[target]?.active ?? false; }
   completedPortalTrips(target: number): number { return this.portals?.completedTrips[target] ?? 0; }
   /** @deprecated Use isPortalDeadlockActive to inspect a specific destination. */
@@ -72,10 +80,12 @@ export class Simulation {
     this.recoveryEnabled = this.scenario.portalRecoveryByDefault ?? true;
     this.random = new Random(config.seed); this.navigation = new Navigation(this.scenario);
     this.grid = new SpatialGrid(this.scenario.bounds, count);
+    if (this.navigation.urban) this.sidewalkPassing = new SidewalkPassing(this.navigation, this.grid, this.agents);
     this.attention = new PedestrianAttention(config.seed, this.agents, this.navigation, this.grid);
     this.encounters = new EncounterState(count, config.seed);
     this.settings = { simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto' };
-    this.traffic = this.navigation.scramble ? new TrafficSignal() : undefined;
+    this.traffic = this.navigation.scramble ? new TrafficSignal(parseSignalMode(config.signalMode)) : undefined;
+    if (this.scenario.vehicleLanes?.length) this.vehicles = new VehicleTraffic(config.seed, this.agents, this.scenario.vehicleLanes);
     if (this.traffic) this.crossings = new CrossingClearance(this.navigation, this.grid, count);
     if (this.scenario.scramble?.crosswalks.length) this.crosswalkFlow = new CrosswalkFlow(this.navigation, count, config.seed);
     if (this.scenario.portals) {
@@ -84,7 +94,8 @@ export class Simulation {
       if (this.scenario.portalTripMix && !this.scenario.targetTransitions) {
         this.tripDemand = new PortalTripDemand(this.scenario.portals, this.scenario.portalTripMix, config.seed);
       }
-      this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways, this.tripDemand);
+      this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways, this.tripDemand,
+        this.vehicles && this.permitsPortalStep);
       if (this.navigation.urban) {
         this.courtesy = new DoorwayCourtesy(this.agents, this.navigation, this.grid, this.scenario.portals);
         this.headway = new DoorwayHeadway(this.agents, this.grid, this.navigation, this.scenario.portals);
@@ -99,8 +110,8 @@ export class Simulation {
     if (settings.walkingSpeed !== undefined) this.settings.walkingSpeed = finite(settings.walkingSpeed, 1.35, 0, 4);
     if (settings.avoidanceStrength !== undefined) this.settings.avoidanceStrength = finite(settings.avoidanceStrength, 1, 0, 3);
     if (settings.signalMode !== undefined) {
-      this.settings.signalMode = settings.signalMode === 'red' || settings.signalMode === 'green' ? settings.signalMode : 'auto';
-      this.traffic?.setMode(this.settings.signalMode, this.time);
+      this.settings.signalMode = parseSignalMode(settings.signalMode) ?? 'auto';
+      this.traffic?.setMode(this.settings.signalMode, this.time, this.vehicles?.occupiesCrossing, (this.signal?.crossing ?? 0) > 0);
     }
     for (let i = 0; i < this.agents.count; i++) this.agents.preferredSpeed[i] = this.agents.speedFactor[i] * this.settings.walkingSpeed;
     if (settings.walkingSpeed !== undefined || settings.avoidanceStrength !== undefined) this.configurePortalRecovery();
@@ -133,8 +144,9 @@ export class Simulation {
   }
   private readonly newPerson = (i: number): void => {
     const a = this.agents;
-    a.scale[i] = this.random.range(0.89, 1.13);
-    a.radius[i] = a.scale[i] * 0.25; a.speedFactor[i] = this.random.range(0.8, 1.2);
+    this.sidewalkPassing?.reset(i);
+    a.scale[i] = this.random.range(0.89, MAX_SCALE);
+    a.radius[i] = a.scale[i] * RADIUS_AT_UNIT_SCALE; a.speedFactor[i] = this.random.range(0.8, 1.2);
     a.preferredSpeed[i] = a.speedFactor[i] * this.settings.walkingSpeed;
     a.appearance[i] = this.random.int(65535);
     const color = PALETTE[this.random.int(PALETTE.length)];
@@ -210,6 +222,7 @@ export class Simulation {
     this.grid.rebuild(state.x, state.z, a.count);
   }
   private assignTarget(id: number, targetId: number): void {
+    this.sidewalkPassing?.reset(id);
     this.crosswalkFlow?.reset(id);
     if (this.portals) { this.portals.assignTarget(id, targetId); return; }
     const a = this.agents, target = this.scenario.targets[targetId], b = this.scenario.bounds;
@@ -248,6 +261,24 @@ export class Simulation {
   isInPassage(id: number): boolean { return this.portals?.inPassage(id) ?? false; }
   isInPortalLane(id: number): boolean { return this.portals?.inLane(id) ?? false; }
 
+  private readonly permitsPortalStep = (id: number, x: number, z: number): boolean => {
+    const a = this.agents, fromX = a.current.x[id], fromZ = a.current.z[id], radius = a.radius[id];
+    x = Math.fround(x); z = Math.fround(z);
+    if (this.vehicles!.blocksPedestrian(fromX, fromZ, x, z, a.scale[id])) return false;
+    const urban = this.navigation.urban;
+    return this.signal?.pedestrian === 'green' || !urban?.occupiesCrossing(x, z, radius + 0.015)
+      || urban.occupiesCrossing(fromX, fromZ, radius + 0.015);
+  };
+
+  private readonly permitsSpawn = (x: number, z: number): boolean => {
+    x = Math.fround(x); z = Math.fround(z);
+    const radius = MAX_SCALE * RADIUS_AT_UNIT_SCALE;
+    // Portal replacement creates a new person after car movement. Check the new
+    // location with the largest possible radius before changing the slot's life.
+    return !this.vehicles!.blocksPedestrian(x, z, x, z, MAX_SCALE)
+      && (this.signal?.pedestrian === 'green' || !this.navigation.urban?.occupiesCrossing(x, z, radius + 0.015));
+  };
+
   private writeMotion(i: number, dt: number, x: number, z: number): number {
     const a = this.agents, read = a.current, write = a.next;
     const vx = (x - read.x[i]) / dt, vz = (z - read.z[i]) / dt;
@@ -268,9 +299,11 @@ export class Simulation {
   step(dt = FIXED_DT): void {
     if (!Number.isFinite(dt) || dt <= 0 || dt > 0.1) throw new RangeError('Simulation step must be between 0 and 0.1 seconds.');
     const a = this.agents, read = a.current;
-    this.traffic?.update(this.time + dt);
+    this.traffic?.update(this.time + dt, this.vehicles?.occupiesCrossing, (this.signal?.crossing ?? 0) > 0);
     const scramble = this.navigation.scramble;
-    const red = this.signal?.phase === 'red';
+    const pedestrian = this.signal?.pedestrian;
+    const crossingClosed = pedestrian === 'red' || pedestrian === 'flashingGreen';
+    const clearingCrossers = crossingClosed && (this.signal?.crossing ?? 0) > 0;
     this.grid.rebuild(read.x, read.z, a.count);
     const socialAvoidance = this.settings.avoidanceStrength > 0;
     const courtesy = socialAvoidance ? this.courtesy : undefined;
@@ -287,52 +320,64 @@ export class Simulation {
       // Use one clearance for classification, routing and integration. A person who
       // has only partly cleared the exit curb must keep moving onto the sidewalk.
       const radius = a.radius[i] + 0.015;
-      const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
-      const clearance = this.crossings && (this.crossings.clearing[i] || (red && !sidewalkOnly)) ? this.crossings : undefined;
+      const sidewalkOnly = !!scramble && crossingClosed && scramble.isSidewalk(read.x[i], read.z[i], radius);
+      // At the first flashing step, choose a reachable curb. Keep that decision
+      // until the person lands, including through a red or a later green.
+      const clearance = this.crossings && (this.crossings.clearing[i] || (crossingClosed && !sidewalkOnly))
+        ? this.crossings : undefined;
+      const clearRoad = !!clearance;
       const recovery = this.recoveryByTarget[a.targetId[i]];
-      const order = clearance ? undefined : recovery?.order(i);
+      const order = clearRoad ? undefined : recovery?.order(i);
       const passageAllowed = !order || order === 'pass';
       const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];
       const previousPeer = this.encounters.gazeTarget[i];
       const passer = previousPeer >= 0 && a.generation[previousPeer] === this.encounters.gazeLife[i] ? previousPeer : -1;
       const passSide = this.encounters.passSide[i];
       this.encounters.advance(i, dt);
-      const yielding = !order && !clearance && courtesy?.yielding(i) && !this.portals?.steppingAside(i);
+      const yielding = !order && !clearRoad && courtesy?.yielding(i) && !this.portals?.steppingAside(i);
       if (this.portals) {
-        if (passageAllowed && !yielding && (!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
+        if (passageAllowed && !yielding && (!clearRoad || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
           this.crosswalkFlow?.reset(i);
+          this.sidewalkPassing?.reset(i);
           this.attention.settle(i, dt);
           const speed = this.writeMotion(i, dt, this.projected.x, this.projected.z);
+          if (this.navigation.urban?.occupiesCrossing(a.next.x[i], a.next.z[i], radius)) crossing++;
           totalSpeed += speed;
           if (speed < a.preferredSpeed[i] * 0.45) stopped++;
           continue;
         }
-      } else if (!clearance && tx * tx + tz * tz < 10) this.nextTarget(i);
+      } else if (!clearRoad && tx * tx + tz * tz < 10) this.nextTarget(i);
       if (clearance) this.crosswalkFlow?.reset(i);
       const followingTrack = !clearance && this.crosswalkFlow?.guide(i, a.generation[i],
         read.x[i], read.z[i], a.targetId[i], radius, this.direction);
-      if (!followingTrack && (!clearance || !Number.isFinite(clearance.landingX[i]))) {
+      if (!followingTrack && !clearance) {
         this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius);
       }
-      if (!clearance && this.doorways?.cells[this.grid.cells[i]]) this.portals?.guideSidewalk(i, this.direction);
-      const crossingPace = clearance?.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) ?? 1;
+      const crossingPace = clearance
+        ? clearance.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) : 1;
       const steppingAside = this.portals?.steppingAside(i);
-      const waitingAtMouth = !order && !clearance && !yielding && this.portals?.waitingAtMouth;
+      const waitingAtMouth = !order && !clearRoad && !yielding && this.portals?.waitingAtMouth;
+      if (this.sidewalkPassing) {
+        if (socialAvoidance && !followingTrack && !clearRoad && !order && !yielding && !waitingAtMouth && !steppingAside) {
+          this.sidewalkPassing.guide(i, this.stepCount, this.direction);
+        } else this.sidewalkPassing.reset(i);
+      }
       if (order) recovery!.guide(i, this.direction);
       else if (yielding) courtesy!.guide(i, this.direction);
       else if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
       const routeX = this.direction.x, routeZ = this.direction.z;
-      const waitingAtRed = sidewalkOnly && scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius);
-      if (waitingAtRed) waiting++;
-      const allowHesitation = !clearance && !waitingAtRed && !waitingAtMouth && !this.doorways?.cells[this.grid.cells[i]];
-      const speedScale = crossingPace * this.attention.update(i, dt, waitingAtRed, routeX, routeZ, allowHesitation, passer, passSide);
+      const makeLandingRoom = clearingCrossers && this.grid.counts[this.grid.cells[i]] > 1;
+      const waitingAtCurb = sidewalkOnly && scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius, makeLandingRoom);
+      if (waitingAtCurb) waiting++;
+      const allowHesitation = !clearRoad && !waitingAtCurb && !waitingAtMouth && !this.doorways?.cells[this.grid.cells[i]];
+      const speedScale = crossingPace * this.attention.update(i, dt, waitingAtCurb, routeX, routeZ, allowHesitation, passer, passSide);
       const desiredSpeed = a.preferredSpeed[i] * speedScale;
       a.preferredVX[i] = this.direction.x * desiredSpeed; a.preferredVZ[i] = this.direction.z * desiredSpeed;
       const stayOnSidewalk = sidewalkOnly || !!order;
       this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity, speedScale, stayOnSidewalk);
       if (order === 'wait' && !this.avoidance.yieldingAtCurb) {
         this.velocity.x = 0; this.velocity.z = 0;
-      } else if (!order && !clearance && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
+      } else if (!order && !clearRoad && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
         headway?.limit(i, this.stepCount, this.time, this.direction, this.velocity);
       }
       let ax = (this.velocity.x - read.vx[i]) / 0.3, az = (this.velocity.z - read.vz[i]) / 0.3;
@@ -359,35 +404,45 @@ export class Simulation {
         }
       }
       if (scramble) {
-        scramble.constrain(read.x[i], read.z[i], x, z, radius, stayOnSidewalk, this.projected);
+        scramble.constrain(read.x[i], read.z[i], x, z, radius, stayOnSidewalk, this.projected, this.avoidance.allowCrossingMargin);
         x = this.projected.x; z = this.projected.z;
       }
       if (this.doorways) {
         this.doorways.limit(i, x, z, dt, this.projected, stayOnSidewalk);
         x = this.projected.x; z = this.projected.z;
       }
+      if (this.vehicles?.blocksPedestrian(read.x[i], read.z[i], Math.fround(x), Math.fround(z), a.scale[i])) {
+        x = read.x[i]; z = read.z[i];
+      }
       if (scramble) {
         const onSidewalk = scramble.isSidewalk(Math.fround(x), Math.fround(z), radius);
-        if (!onSidewalk) crossing++;
-        this.crossings!.observeStep(i, read.x[i], read.z[i], radius, onSidewalk);
+        if (!onSidewalk && (!this.navigation.urban || this.navigation.urban.occupiesCrossing(Math.fround(x), Math.fround(z), radius))) crossing++;
+        this.crossings!.observeStep(i, onSidewalk);
       }
       const speed = this.writeMotion(i, dt, x, z);
       totalSpeed += speed;
       if (speed < a.preferredSpeed[i] * 0.45) stopped++;
     }
+    // Use accepted pedestrian trajectories while both endpoints still belong to
+    // the same life. A portal replacement has no path across the intervening map.
+    const vehicleSignals = this.signal?.crossing === 0 && crossing === 0 ? this.signal : undefined;
+    this.vehicles?.step(dt, vehicleSignals ?? VEHICLES_STOPPED);
     if (this.portals && this.portals.transferCount) {
-      this.arrivals += this.portals.transferCount;
-      this.portals.replaceArrivals(id => {
+      this.arrivals += this.portals.replaceArrivals(id => {
         this.newPerson(id);
         this.attention.reset(id, a.generation[id]);
         this.encounters.reset(id, a.generation[id]);
         this.crossings?.reset(id);
         this.crosswalkFlow?.reset(id);
-      });
+      }, this.vehicles && this.permitsSpawn);
     }
     a.swap(); this.stepCount++; this.time += dt;
     this.stats.meanSpeed = totalSpeed / a.count; this.stats.congestion = stopped / a.count;
     if (this.signal) { this.signal.waiting = waiting; this.signal.crossing = crossing; }
+  }
+  writeVehicleSnapshot(target: Float32Array): void {
+    if (this.vehicles) this.vehicles.writeSnapshot(target);
+    else if (target.length !== 0) throw new RangeError('Snapshot has an invalid vehicle capacity.');
   }
   writeSnapshot(target: Float32Array): void {
     const a = this.agents, state = a.current;

@@ -103,7 +103,9 @@ describe('Shibuya entrances', () => {
 
   it('puts an opaque recessed entrance at each doorway in the photographic and plain city mesh', () => {
     for (const door of shibuya.portals!.filter(p => p.kind === 'door')) {
-      const { vertices, indices } = createEnvironment({ ...shibuya, portals: [door], scramble: { ...shibuya.scramble!, signalPositions: [] } });
+      const { vertices, indices } = createEnvironment({
+        ...shibuya, portals: [door], vehicleLanes: [], scramble: { ...shibuya.scramble!, signalPositions: [] },
+      });
       expect(indices.length).toBeGreaterThan(0);
       const dx = door.approach.x - door.end.x, dz = door.approach.z - door.end.z, length = Math.hypot(dx,dz);
       const base = door.end.x * dx / length + door.end.z * dz / length;

@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "benchmark": "node --import tsx scripts/benchmark.ts",
-    "benchmark:shibuya": "node --import tsx scripts/benchmark.ts --scenario=shibuya --signal=green --steps=60 --counts=1000,5000"
+    "benchmark:shibuya": "node --import tsx scripts/benchmark.ts --scenario=shibuya --signal=pedestrian --steps=60 --counts=1000,5000"
   },
   "dependencies": {
     "gl-matrix": "^3.4.4"

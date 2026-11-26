@@ -61,10 +61,17 @@ export class DoorwayCourtesy {
     for (let id = 0; id < a.count; id++) {
       const x = s.x[id], z = s.z[id];
       this.gate[id] = -1;
+      let nearest = APPROACH_RADIUS ** 2;
       for (let k = 0; k < this.openings.length; k++) {
-        const { portal, normalX, normalZ, depth } = this.openings[k];
-        if ((x - portal.approach.x) ** 2 + (z - portal.approach.z) ** 2 > APPROACH_RADIUS ** 2) continue;
-        this.gate[id] = k;
+        const { portal } = this.openings[k];
+        const distance2 = (x - portal.approach.x) ** 2 + (z - portal.approach.z) ** 2;
+        if (distance2 < nearest) {
+          nearest = distance2;
+          this.gate[id] = k;
+        }
+      }
+      if (this.gate[id] >= 0) {
+        const { portal, normalX, normalZ, depth } = this.openings[this.gate[id]];
         // When someone is nearly stationary, their body heading is still visible.
         const speed = Math.hypot(s.vx[id], s.vz[id]);
         this.speed[id] = speed;
@@ -73,13 +80,12 @@ export class DoorwayCourtesy {
         const dx = x - portal.end.x, dz = z - portal.end.z;
         const along = dx * normalX + dz * normalZ, side = dx * normalZ - dz * normalX;
         const through = Math.abs(this.directionX[id] * normalX + this.directionZ[id] * normalZ) > 0.7;
-        this.inMouth[id] = Number(a.opacity[id] > 0.05 && along > 0 && along < depth * 0.5
-          && Math.abs(side) <= portal.width / 2 && through);
+        this.inMouth[id] = Number(a.opacity[id] > 0.05 && (a.portalStage[id]
+          || (along > 0 && along < depth && Math.abs(side) <= portal.width / 2 && through)));
         // Priority goes to whoever is passing through, then whoever is closer.
         // Within a 35 cm distance band, both people use the same doorway-relative ordering.
         this.priority[id] = 1000 * this.inMouth[id] - Math.floor(Math.hypot(dx, dz) / 0.35)
           + 0.5 + 0.45 * Math.tanh(side) + 0.04 * Math.tanh(along);
-        break;
       }
     }
   }
@@ -96,20 +102,20 @@ export class DoorwayCourtesy {
         for (let k = g.offsets[c]; k < g.offsets[c + 1]; k++) {
           if (++examined > MAX_NEIGHBORS) return peer;
           const j = g.indices[k];
-          if (this.gate[j] !== this.gate[id] || this.priority[j] <= this.priority[id]) continue;
+          // People passing along the facade use ordinary sidewalk avoidance.
+          if (!this.inMouth[j] || this.gate[j] !== this.gate[id] || this.priority[j] <= this.priority[id]) continue;
           const dx = x - s.x[j], dz = z - s.z[j], distance2 = dx * dx + dz * dz;
           if (distance2 > NOTICE_DISTANCE ** 2 || distance2 < 0.02) continue;
           const ux = this.directionX[j], uz = this.directionZ[j], ahead = dx * ux + dz * uz;
           if (ahead < -0.05 || ahead > 2.05) continue;
           const ownX = this.directionX[id], ownZ = this.directionZ[id];
-          if (ownX * ux + ownZ * uz > 0.8 && !this.inMouth[j]) continue;
           // Will our path intersect their next second of travel?
           const lateral = dx * uz - dz * ux;
           const eta = Math.max(0, Math.min(1, ahead / Math.max(0.45, this.speed[j])));
           const futureSide = lateral + (ownX * uz - ownZ * ux) * a.preferredSpeed[id] * eta;
           const miss = lateral * futureSide < 0 ? 0 : Math.min(Math.abs(lateral), Math.abs(futureSide));
           if (miss > 0.70) continue;
-          const score = 2 * this.inMouth[j] - miss - distance2 * 0.2;
+          const score = -miss - distance2 * 0.2;
           if (score > bestScore && canSeeWalker(a, this.navigation, g, id, j)) { bestScore = score; peer = j; }
         }
       }
@@ -173,7 +179,7 @@ export class DoorwayCourtesy {
         const ahead = dx * this.directionX[peer] + dz * this.directionZ[peer];
         const age = time - this.started[id];
         if (this.gate[id] >= 0 && !a.portalStage[id] && this.peerLife[id] === a.generation[peer]
-          && this.gate[id] === this.gate[peer] && this.priority[peer] > this.priority[id]
+          && this.inMouth[peer] && this.gate[id] === this.gate[peer] && this.priority[peer] > this.priority[id]
           && age < MAX_YIELD && dx * dx + dz * dz < 2.5 ** 2
           && (age < MIN_YIELD || ahead > -0.22) && canSeeWalker(a, this.navigation, this.grid, id, peer)) continue;
         this.peer[id] = -1;

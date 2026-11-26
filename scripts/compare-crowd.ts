@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Simulation } from '../src/simulation/Simulation';
 import { SpatialGrid } from '../src/simulation/SpatialGrid';
 import { PolygonRegion } from '../src/simulation/UrbanGeometry';
-import { SIGNAL_GREEN_SECONDS, SIGNAL_RED_SECONDS } from '../src/simulation/TrafficSignal';
+import { SIGNAL_CYCLE_SECONDS } from '../src/simulation/TrafficSignal';
 import { DEFAULT_CONFIG, FIXED_DT, SNAPSHOT_STRIDE } from '../src/types';
 
 // Copy this observer to the same scripts/ path in both revisions. Geometry and
@@ -51,6 +51,11 @@ const instrumented = sim as unknown as {
   attention?: { counts: { waitLookStarts: number; hesitationStarts: number }; headYaw: Float32Array };
   encounters?: { contactEvents: number };
 };
+function pedestrianLight() {
+  // The baseline exported its walking indication as phase.
+  const state = sim.signal as { pedestrian?: string; phase?: string };
+  return state.pedestrian ?? state.phase;
+}
 function sidewalkIndex(x: number, z: number): number {
   return sidewalks.findIndex(region => region.contains(x, z));
 }
@@ -62,10 +67,10 @@ function observeCrossings(id: number, reset: boolean): void {
     entrySidewalk[id] = -1;
   } else if (onSidewalk[id] && !on) {
     entrySidewalk[id] = sidewalkIndex(old.x[id], old.z[id]);
-    if (sim.signal!.phase === 'red') redEntries++;
+    if (pedestrianLight() === 'red') redEntries++;
   } else if (!onSidewalk[id] && on && entrySidewalk[id] >= 0) {
     const exit = sidewalkIndex(now.x[id], now.z[id]);
-    if (sim.signal!.phase === 'green' && exit >= 0 && exit !== entrySidewalk[id]) greenCrossings++;
+    if (pedestrianLight() === 'green' && exit >= 0 && exit !== entrySidewalk[id]) greenCrossings++;
     entrySidewalk[id] = -1;
   }
   onSidewalk[id] = Number(on);
@@ -130,13 +135,13 @@ function observeReversal(id: number, step: number): void {
   side[id] = sign; lastStep[id] = step; lastDirX[id] = dx; lastDirZ[id] = dz;
 }
 
-const steps = Math.round((SIGNAL_RED_SECONDS + SIGNAL_GREEN_SECONDS) / FIXED_DT);
+const steps = Math.round(SIGNAL_CYCLE_SECONDS / FIXED_DT);
 for (let step = 0; step <= steps; step++) {
   if (step) {
     const start = performance.now();
     sim.step(FIXED_DT);
     const elapsed = performance.now() - start;
-    if (sim.signal!.phase === 'green') greenStepMs.push(elapsed);
+    if (pedestrianLight() === 'green') greenStepMs.push(elapsed);
   }
   for (let i = 0; i < count; i++) {
     const reset = !step || generations[i] !== agents.generation[i];

@@ -171,6 +171,21 @@ describe('PLATEAU static mesh loading', () => {
     expect(materials).toEqual(new Set([0,-1,-2]));
   });
 
+  it('places the near edge of each stop line at the vehicle braking boundary', () => {
+    const mesh = createEnvironment({
+      ...syntheticShibuya, urbanMap: fixture().map, portals: [],
+      vehicleLanes: [{ axis: 'eastWest', start: { x: 20, z: -7 }, end: { x: -40, z: -7 }, stop: 11, clear: 40 }],
+      scramble: { roadHalfWidth: 0, crosswalks: [], signalPositions: [] },
+    });
+    const points = mesh.vertices;
+    expect(points.length).toBe(40);
+    const xs = [points[0], points[10], points[20], points[30]];
+    const zs = [points[2], points[12], points[22], points[32]];
+    expect(Math.max(...xs)).toBe(9);
+    expect(Math.min(...xs)).toBeCloseTo(8.6);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(3.5);
+  });
+
   it('validates photographic coordinates, page indices and triangle consistency', () => {
     const { map, coordinates, indices } = photographicFixture();
     expect(decodeAppearanceCoordinates(map, coordinates.buffer, indices)).toEqual(coordinates);
@@ -331,7 +346,7 @@ describe('pedestrian picking', () => {
     current[0] = 2;
     const stats = renderer.render(previous, current, 2, 0.5, { quality: 'balanced', debug: false, followedId: 0 });
     expect(renderer.camera.position[0]).toBe(1);
-    expect(renderer.camera.position[1]).toBeCloseTo(1.65 * 1.1);
+    expect(renderer.camera.position[1]).toBeCloseTo(1.535 * 1.1);
     expect(stats.visible).toBe(1);
     renderer.destroy();
   });

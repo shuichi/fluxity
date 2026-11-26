@@ -1,4 +1,4 @@
-import { FIXED_DT, SNAPSHOT_STRIDE } from '../types';
+import { FIXED_DT, SNAPSHOT_STRIDE, VEHICLE_SNAPSHOT_STRIDE } from '../types';
 import type { WorkerInput, WorkerOutput } from '../types';
 import { Simulation } from './Simulation';
 
@@ -22,9 +22,11 @@ function publish(): void {
   if (buffers.length === 0) { pendingPublish = true; return; }
   pendingPublish = false;
   const buffer = buffers.pop()!;
-  simulation.writeSnapshot(new Float32Array(buffer));
+  const crowdFloats = simulation.agents.count * SNAPSHOT_STRIDE;
+  simulation.writeSnapshot(new Float32Array(buffer, 0, crowdFloats));
+  simulation.writeVehicleSnapshot(new Float32Array(buffer, crowdFloats * Float32Array.BYTES_PER_ELEMENT));
   scope.postMessage({
-    type: 'snapshot', generation, buffer, count: simulation.agents.count,
+    type: 'snapshot', generation, buffer, count: simulation.agents.count, vehicleCapacity: simulation.vehicleCapacity,
     step: simulation.stepCount, simulationTime: simulation.time, stepMs: lastStepMs,
     meanSpeed: simulation.stats.meanSpeed, congestion: simulation.stats.congestion,
     signal: simulation.signal,
@@ -39,7 +41,8 @@ scope.onmessage = (event: MessageEvent<WorkerInput>): void => {
         generation = message.generation;
         simulation = new Simulation(message.config);
         paused = message.paused; accumulator = 0; lastStepMs = 0; pendingPublish = false;
-        expectedBytes = simulation.agents.count * SNAPSHOT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
+        expectedBytes = (simulation.agents.count * SNAPSHOT_STRIDE
+          + simulation.vehicleCapacity * VEHICLE_SNAPSHOT_STRIDE) * Float32Array.BYTES_PER_ELEMENT;
         buffers = Array.from({ length: 4 }, () => new ArrayBuffer(expectedBytes));
         lastTime = performance.now(); publish();
         break;

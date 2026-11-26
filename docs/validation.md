@@ -1,3 +1,33 @@
+# 渋谷の黄信号と最寄りの歩道への退避（2026-11-26）
+
+渋谷の50店舗・全方向の街路端を使い、5,000人、シード42、歩行速度設定1.35 m/s、回避強度1、メタAIなし、固定30 Hzで検証した。旧版は赤12秒・緑35秒。修正版は赤12秒・緑30秒・黄5秒で、双方の周期は47秒。
+
+### 赤に変わったときの940人
+
+最初の黄信号の直前には1,247人が横断中だった。新しく横断を始めた人は黄色の5秒間で0人。赤の直前まで車道にいた940人について、その時点の位置から最寄りの到達可能な歩道を求め、同一人物の身体全体が実際にその歩道に入るまで追跡した。赤を保つと、12秒後に218人、30秒後に34人がまだ車道にいた。42.83秒で最後の1人が到着した。別の歩道に着いた人は0人だった。
+
+### 自動信号での滞留
+
+修正前後で、初期位置・速度・体格・目的地を含む5,000人分の照合値は一致した。入店・退出は完了した旅程の累計。滞留は同じ人の位置を1秒ごとに記録し、指定時間の全位置を囲む長方形の対角線が2 m以内だった人数を数えた。最大の密集は、各人を中心とした半径5 mの円の中で人数が最大のものを取った。
+
+| 時点 | 指標 | 修正前 | 修正後 |
+| --- | --- | ---: | ---: |
+| 4分08秒 | 直前30秒間の滞留 | 1,696 | 1,744 |
+| 4分08秒 | 半径5 mに集まった最大人数 | 821 | 1,042 |
+| 4分08秒 | 入店 / 街路端からの退出 | 713 / 1,290 | 689 / 1,250 |
+| 5分30秒 | 直前5分間の滞留 | 748 | 743 |
+| 5分30秒 | 入店 / 街路端からの退出 | 889 / 1,852 | 861 / 1,738 |
+
+自動信号での5分30秒を毎ステップ追跡し、黄色・赤で歩道から横断を始めた人数はどちらも0人だった。赤で選んだ歩道を記録し、観測時間内に全身が歩道に入った5,150件で到着先が一致した。黄色の全横断者で2.8 m/s以上の希望速度を確認した。横断者の実速度が2.2 m/sを超えた割合は、黄色に車道上で観測した延べ人数の8.6%だった。
+
+近くの人を調べる上限96人を周辺区画の人口に比例して配分する方式も比較した。赤で退避する人と縁石で待つ人に適用した試作では、4分08秒の最大の密集が627人、直前30秒間の滞留が1,500人に減った。最初の赤を120秒保つ試験では19人が車道に残った。横断経路を歩く人にも適用した試作では最大の密集が634人になり、赤を120秒保っても2人が車道に残った。今回の渋谷には、同じ試験で全員が退避できた方式を採用した。
+
+### 白線際のすれ違い
+
+北側の横断歩道で同じ人を白線の0.28 m内側から歩かせた。単独では身体全体が白線内に収まった。対向者10人を置くと、身体の中心が白線の外に最大0.245 m出て、最初にはみ出してから1.33秒で身体全体が白線内に戻った。回避中に赤に切り替えた試験では4.83秒で近い側の西の歩道に着いた。全5本の横断歩道の両側で、体幅を含めて白線から0.8 m以内に収まることも検証した。
+
+`node --import tsx scripts/check-crossing-clearance.ts 42 1409 5000` で最初の黄色から赤への切り替えを再現できる。開始4分08秒と5分30秒の街全体の集計は `node --import tsx scripts/measure-shibuya-stalls.ts 330 42 '' 2 5000 248` で再現できる。
+
 # 隣の戸口を避けたために入店できなかった店舗の再検証（2026-11-26）
 
 入店者が自分の店の入場レーンに近づき、体幅を確保して歩道上をそのレーンまで直進できる場合は、隣の戸口を避ける一歩を先読みする。0.8 m先が自分の入場レーンの口に今より近ければ迂回し、距離が縮まらなければ元の入店経路を保つようにした。入店する店の幅に応じた既存の接近範囲を使う。ほかの店を通り過ぎる人はその戸口を避け、実際に店から人が出てきた場合は従来の譲り合いと接触判定が働く。
@@ -424,7 +454,7 @@ The 5,000-person workload exceeds the 33.33ms budget for 30Hz simulation on this
 
 ## Scope and limits
 
-The visible scenery covers approximately 500m square; walking is limited to 250m square. Ground is flattened, buildings are untextured, and crossing/plaza corrections are calibrated overlays. The FY2025 source includes older geometry and attributes; it is not a current construction survey. Traffic timing remains the demo's 12-second red / 35-second green cycle. Numeric and short browser tests do not establish unlimited-duration clearance under heavy congestion, physical non-overlap of people, or performance on other hardware.
+The visible scenery covers approximately 500m square; walking is limited to 250m square. Ground is flattened, buildings are untextured, and crossing/plaza corrections are calibrated overlays. The FY2025 source includes older geometry and attributes; it is not a current construction survey. These measurements used the demo’s earlier 12-second red and 35-second green cycle. Numeric and short browser tests do not establish unlimited-duration clearance under heavy congestion, physical non-overlap of people, or performance on other hardware.
 
 ---
 

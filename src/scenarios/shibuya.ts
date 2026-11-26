@@ -2,6 +2,7 @@ import type { PedestrianPortal, Scenario } from '../types';
 import map from './data/shibuya-map.json';
 import layout from '../../data/shibuya/layout.json';
 import expanded from '../../data/shibuya/expanded-portals.json';
+import { SHIBUYA_VEHICLE_LANES } from '../simulation/VehicleLanes';
 
 const originalDoors: PedestrianPortal[] = layout.doorways.map(door => ({ ...door, kind: 'door' }));
 const originalStreets: PedestrianPortal[] = layout.streetEnds.map(street => ({ ...street, kind: 'street', edge: 'north' }));
@@ -45,6 +46,8 @@ export function createShibuyaScenario(shopLayout: 'five' | 'expanded', streetLay
   if (streetLayout === 'all') selected.push(...extraStreets);
   return {
     ...legacyShibuya,
+    roadMarkings: 'shibuya',
+    vehicleLanes: SHIBUYA_VEHICLE_LANES,
     portals: selected,
     targets: selected.map(p => p.approach),
     spawnTargets: undefined,

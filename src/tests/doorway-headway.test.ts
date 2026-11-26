@@ -87,7 +87,7 @@ describe('following distance on the shop sidewalk', () => {
   it('brakes before overlap in the simulation step and proceeds once the way is clear', () => {
     const scenario = { ...shibuya, spawnTargets: shibuya.spawnZones.map(() => shop) };
     let makingRoomAtCurb = false;
-    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, seed: 42, signalMode: 'green' }, {
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, seed: 42, signalMode: 'pedestrian' }, {
       get yieldingAtCurb() { return makingRoomAtCurb; },
       compute(id, _agents, _grid, direction, _settings, result) {
         result.x = id === 0 && !makingRoomAtCurb ? direction.x : 0;

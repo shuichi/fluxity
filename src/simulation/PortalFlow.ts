@@ -27,7 +27,7 @@ interface Gate {
   emerging: Set<number>;
   admissions: number;
 }
-// The maximum shoulder diameter at a doorway is 0.821 m.
+// Two walkers at maximum scale reserve 0.821 m between their centers in a doorway.
 const HEADWAY = 0.83;
 const CAPTURE = 1.5;
 const LANE_PITCH = 0.615; // One maximum body diameter plus 5 cm between neighboring lanes.
@@ -45,6 +45,7 @@ export class PortalFlow {
   private readonly passage: (Lane | undefined)[];
   private readonly reservation: (Lane | undefined)[];
   private readonly leader: Int32Array;
+  private readonly leaderGeneration: Uint32Array;
   private readonly alignment: Float32Array;
   private readonly trackOffset: Float32Array;
   private readonly onApproach: Uint8Array;
@@ -62,7 +63,8 @@ export class PortalFlow {
 
   constructor(private readonly portals: PedestrianPortal[], private readonly nav: Navigation,
     private readonly agents: AgentData, private readonly random: Random, private readonly doorways?: DoorwayClearance,
-    private readonly demand?: PortalTripDemand) {
+    private readonly demand?: PortalTripDemand,
+    private readonly permitsStep?: (id: number, x: number, z: number) => boolean) {
     if (portals.length < 2 || portals.length !== nav.scenario.targets.length) {
       throw new Error('Portal scenarios require a passage for each destination and at least two passages.');
     }
@@ -148,6 +150,7 @@ export class PortalFlow {
     this.stepAsideTime = new Float32Array(agents.count);
     this.transfers = new Int32Array(agents.count);
     this.leader = new Int32Array(agents.count).fill(-1);
+    this.leaderGeneration = new Uint32Array(agents.count);
     this.alignment = new Float32Array(agents.count);
     this.trackOffset = new Float32Array(agents.count);
     this.onApproach = new Uint8Array(agents.count);
@@ -162,38 +165,6 @@ export class PortalFlow {
     this.agents.targetId[id] = target;
     this.agents.targetX[id] = lane.queueX;
     this.agents.targetZ[id] = lane.queueZ;
-  }
-
-  /** Through traffic follows the public sidewalk around the entrance apron. */
-  guideSidewalk(id: number, direction: Point2): void {
-    if (!this.nav.urban) return;
-    const a = this.agents, x = a.current.x[id], z = a.current.z[id];
-    const destination = this.destination[id];
-    for (const gate of this.gates) {
-      const lane = gate.exits[0], portal = this.portals[lane.portal];
-      if (portal.kind !== 'door' || gate.exits.length < 2) continue;
-      const ex = x - portal.end.x, ez = z - portal.end.z;
-      if (Math.abs(ex) > 12 || Math.abs(ez) > 12) continue;
-      const ux = (lane.endX - lane.x) / lane.length, uz = (lane.endZ - lane.z) / lane.length;
-      const depth = -(ex * ux + ez * uz), tangent = ex * uz - ez * ux;
-      if (lane.portal === destination.portal || Math.abs(tangent) > portal.width / 2 + 7
-        || depth < 0 || depth > 6.1) continue;
-      const outward = Math.max(-0.2, Math.min(1.3, (5.6 - depth) * 0.65));
-      const side = Math.sign(direction.x * uz - direction.z * ux);
-      const dx = side * uz - outward * ux, dz = -side * ux - outward * uz;
-      const length = Math.hypot(dx, dz);
-      if (length < 0.1) continue;
-      const vx = dx / length, vz = dz / length;
-      const nextX = x + vx * 0.8, nextZ = z + vz * 0.8;
-      const clearance = a.radius[id] + 0.015;
-      if (!this.nav.isSpawnable(nextX, nextZ, clearance)) continue;
-      // Keep a detour on the final sidewalk approach only if it closes the gap to the shopper's own lane.
-      if (this.portals[destination.portal].kind === 'door' && this.nearAssignedMouth(x, z, destination)
-        && (nextX - destination.x) ** 2 + (nextZ - destination.z) ** 2 >= (x - destination.x) ** 2 + (z - destination.z) ** 2
-        && this.nav.urban.sidewalks.lineInside(x, z, destination.x, destination.z, clearance)) return;
-      direction.x = vx; direction.z = vz;
-      return;
-    }
   }
 
   inPassage(id: number): boolean { return this.stage[id] !== Stage.Walking; }
@@ -344,6 +315,7 @@ export class PortalFlow {
     }
     a.preferredVX[id] = pace * dx / length; a.preferredVZ[id] = pace * dz / length;
     this.doorways!.limit(id, px, pz, dt, result, true);
+    if (this.permitsStep && !this.permitsStep(id, result.x, result.z)) { result.x = x; result.z = z; }
     return true;
   }
 
@@ -508,9 +480,9 @@ export class PortalFlow {
       }
       this.reserveEntry(id, entry);
     }
-    this.leader[id] = ahead;
+    this.follow(id, ahead);
     lane.lastOut = id;
-    if (door) lane.leaving.add(id);
+    lane.leaving.add(id);
     lane.outgoing++;
     this.passage[id] = lane;
     this.alignment[id] = fraction;
@@ -527,9 +499,18 @@ export class PortalFlow {
     this.reservation[id] = entry;
   }
 
+  private follow(id: number, ahead: number): void {
+    this.leader[id] = ahead;
+    if (ahead >= 0) this.leaderGeneration[id] = this.agents.generation[ahead];
+  }
+
   private unlinkExit(id: number, lane: Lane): void {
-    if (lane.lastOut === id) lane.lastOut = this.leader[id];
     lane.leaving.delete(id);
+    if (lane.lastOut === id) {
+      // An alignment can be abandoned. Restore the latest remaining admission.
+      lane.lastOut = -1;
+      for (const other of lane.leaving) lane.lastOut = other;
+    }
     lane.outgoing--;
   }
 
@@ -592,9 +573,11 @@ export class PortalFlow {
           const gap = this.progress(lane, other) - progress;
           if (gap > 0.001) distance = Math.min(distance, Math.max(0, gap - HEADWAY));
         }
-      } else if (ahead >= 0 && this.passage[ahead] === lane && this.stage[ahead] === this.stage[id]) {
+      } else if (ahead >= 0 && this.leaderGeneration[id] === a.generation[ahead]
+        && this.passage[ahead] === lane && this.stage[ahead] === this.stage[id]) {
         const gap = outward ? this.progress(lane, ahead) - progress : progress - this.progress(lane, ahead);
-        distance = Math.min(distance, Math.max(0, gap - HEADWAY));
+        // A walker who left the queue and rejoined behind us is no longer our leader.
+        if (gap >= 0) distance = Math.min(distance, Math.max(0, gap - HEADWAY));
       }
       // Variable walking speeds can deliver two tickets close together. Wait before the facade or fade.
       if (outward) {
@@ -650,6 +633,10 @@ export class PortalFlow {
       if (!throughDoor) { result.x = x; result.z = z; }
       reached = false;
     }
+    if (this.permitsStep && !this.permitsStep(id, result.x, result.z)) {
+      result.x = x; result.z = z;
+      return true;
+    }
     if (this.stage[id] !== Stage.Aligning) {
       const fromEnd = lane.length - ((result.x - lane.x) * (lane.endX - lane.x) + (result.z - lane.z) * (lane.endZ - lane.z)) / lane.length;
       const fade = this.portals[lane.portal].kind === 'street' ? Math.min(3, lane.length) : 0.35;
@@ -669,15 +656,18 @@ export class PortalFlow {
   }
 
   /** Apply all replacements after all steering reads, before publishing this fixed step. */
-  replaceArrivals(newPerson: (id: number) => void): void {
+  replaceArrivals(newPerson: (id: number) => void, permitsSpawn?: (x: number, z: number) => boolean): number {
     const a = this.agents, write = a.next;
+    let replaced = 0;
     for (let n = 0; n < this.transferCount; n++) {
       const id = this.transfers[n], exit = this.passage[id]!, entry = this.reservation[id]!;
+      if (permitsSpawn && !permitsSpawn(entry.endX, entry.endZ)) continue;
+      replaced++;
       this.completedTrips[exit.portal]++;
       this.unlinkExit(id, exit);
       entry.transferOwner = -1;
       entry.reserved--;
-      this.leader[id] = entry.incoming ? entry.lastIn : -1;
+      this.follow(id, entry.incoming ? entry.lastIn : -1);
       entry.lastIn = id;
       entry.incoming++;
       this.gates[entry.portal].emerging.add(id);
@@ -699,6 +689,7 @@ export class PortalFlow {
       this.assignTarget(id, target);
     }
     this.transferCount = 0;
+    return replaced;
   }
 
   private randomDestination(entry: number): number {

@@ -3,6 +3,34 @@ import { DEFAULT_CONFIG, type Point2, type Polygon2, type Scenario, type UrbanMa
 import { Navigation } from '../simulation/Navigation';
 import { PolygonRegion, UrbanGeometry } from '../simulation/UrbanGeometry';
 import { Simulation } from '../simulation/Simulation';
+import { shibuya } from '../scenarios/shibuya';
+
+it('rejoins the trip field after avoidance carries part or all of a walker beyond a painted edge', () => {
+  const nav = new Navigation(shibuya), urban = nav.urban!;
+  // Positions and body clearances sampled from the 5,000-person seed 42 run.
+  for (const [x, z, radius, target] of [
+    [-22.4514904, 20.2842464, 0.2883424, 58],
+    [-30.5050583, -11.2012472, 0.2605759, 54], // No visible grid center in the adjacent 3×3 cells.
+    [-23.3392448, 20.5304890, 0.2468043, 56], // A concave bend needs a third ring.
+    [20.3817329, -21.349121, 0.24385558, 9], // Center on paint, shoulder over the edge.
+  ]) {
+    const position = { x, z }, direction = { x: 0, z: 0 }, goal = nav.goals[target];
+    expect(urban.canPassOnCrossing(x, z, radius)).toBe(true);
+    expect(urban.isWalkable(x, z, radius)).toBe(false);
+    for (let step = 0; step < 35 && !urban.isWalkable(position.x, position.z, radius); step++) {
+      nav.direction(position.x, position.z, target, goal.x, goal.z, direction, radius);
+      expect(Math.hypot(direction.x, direction.z)).toBeCloseTo(1);
+      const tx = position.x + 0.08 * direction.x, tz = position.z + 0.08 * direction.z;
+      expect(urban.crossingLine(position.x, position.z, tx, tz, radius)).toBe(true);
+      urban.constrain(position.x, position.z, tx, tz, radius, false, position, true);
+    }
+    expect(urban.isWalkable(position.x, position.z, radius)).toBe(true);
+  }
+  const outside = { x: 1, z: 1 }, goal = nav.goals[54];
+  expect(urban.canPassOnCrossing(-33, -11, 0.26)).toBe(false);
+  nav.direction(-33, -11, 54, goal.x, goal.z, outside, 0.26);
+  expect(outside).toEqual({ x: 0, z: 0 });
+});
 
 const angle = 0.47, c = Math.cos(angle), s = Math.sin(angle);
 const point = (u: number, v: number): Point2 => ({ x: c * u - s * v, z: s * u + c * v });
@@ -27,7 +55,7 @@ const testScenario: Scenario = {
   spawnZones: [{ ...point(-10,0), width: 4, depth: 4 }, { ...point(10,0), width: 4, depth: 4 }],
   targets: [point(-11,0), point(11,0)], spawnTargets: [1,0], targetTransitions: [1,0], targetSpread: 0,
 };
-function pedestrian(mode: 'red' | 'green', u: number): Simulation {
+function pedestrian(mode: 'allRed' | 'pedestrian', u: number): Simulation {
   const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1, signalMode: mode }, undefined, testScenario);
   const p = point(u,0), target = point(11,0), a = simulation.agents;
   a.current.x[0] = p.x; a.current.z[0] = p.z; a.current.vx[0] = c * 1.35; a.current.vz[0] = s * 1.35;
@@ -125,18 +153,18 @@ describe('real-map navigation and signal', () => {
     expect(() => new Navigation({ ...testScenario, urbanMap: { ...map, walkable: [], sidewalks: [] } })).toThrow(/walkable|sidewalk/);
   });
   it('stops at a rotated curb on red, releases on green, and clears the crossing after red', () => {
-    const simulation = pedestrian('red',-4), a = simulation.agents, geometry = simulation.navigation.scramble!;
+    const simulation = pedestrian('allRed',-4), a = simulation.agents, geometry = simulation.navigation.scramble!;
     for (let step = 0; step < 180; step++) {
       simulation.step();
       expect(geometry.isSidewalk(a.current.x[0],a.current.z[0],a.radius[0])).toBe(true);
     }
     expect(simulation.signal?.waiting).toBe(1);
     const before = along({ x: a.current.x[0], z: a.current.z[0] });
-    simulation.updateSettings({ signalMode: 'green' });
+    simulation.updateSettings({ signalMode: 'pedestrian' });
     for (let step = 0; step < 100; step++) simulation.step();
     expect(along({ x: a.current.x[0], z: a.current.z[0] })).toBeGreaterThan(before+2);
     expect(simulation.signal?.crossing).toBe(1);
-    simulation.updateSettings({ signalMode: 'red' });
+    simulation.updateSettings({ signalMode: 'allRed' });
     for (let step = 0; step < 200; step++) {
       simulation.step(); expect(simulation.navigation.isFree(a.current.x[0],a.current.z[0],a.radius[0])).toBe(true);
     }
@@ -145,14 +173,14 @@ describe('real-map navigation and signal', () => {
   });
 
   it.each([-1, 1])('lets a just-landed crosser clear the exit curb on red (direction %s)', (sign) => {
-    const simulation = pedestrian('green', 0), a = simulation.agents, geometry = simulation.navigation.scramble!;
+    const simulation = pedestrian('pedestrian', 0), a = simulation.agents, geometry = simulation.navigation.scramble!;
     const start = point(sign * (3 + a.radius[0] + 0.007), 0), target = point(sign * 11, 0);
     a.current.x[0] = start.x; a.current.z[0] = start.z;
     a.current.vx[0] = sign * c * 1.35; a.current.vz[0] = sign * s * 1.35;
     a.targetId[0] = sign > 0 ? 1 : 0; a.targetX[0] = target.x; a.targetZ[0] = target.z;
     expect(geometry.isSidewalk(a.current.x[0], a.current.z[0], a.radius[0])).toBe(true);
     expect(geometry.isSidewalk(a.current.x[0], a.current.z[0], a.radius[0] + 0.015)).toBe(false);
-    simulation.updateSettings({ signalMode: 'red' });
+    simulation.updateSettings({ signalMode: 'allRed' });
     for (let step = 0; step < 60; step++) {
       simulation.step();
       expect(geometry.isWalkable(a.current.x[0], a.current.z[0], a.radius[0] + 0.015)).toBe(true);

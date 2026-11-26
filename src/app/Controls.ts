@@ -1,4 +1,9 @@
 import type { CameraView, Quality, ScenarioId, SignalMode, SignalState, SimulationConfig } from '../types';
+import { SIGNAL_CYCLE_SECONDS } from '../simulation/TrafficSignal';
+import { pedestrianLamp } from '../renderer/TrafficLights';
+
+const signalGroups = { pedestrian: 'Pedestrians', eastWest: 'Cars E–W', northSouth: 'Cars N–S' } as const;
+const signalColors = { red: 'Red', green: 'Green', flashingGreen: 'Flashing green', yellow: 'Yellow' } as const;
 
 export interface ControlCallbacks {
   onConfig: (patch: Partial<SimulationConfig>, reset: boolean) => void;
@@ -81,17 +86,19 @@ export class Controls {
             <label class="field-label" for="scenario">Environment</label>
             <div class="select-wrap"><select id="scenario" class="simulation-control"><option value="shibuya">Shibuya Scramble</option><option value="plaza">City Plaza</option><option value="corridor">Bidirectional Corridor</option><option value="bottleneck">Bottleneck</option><option value="crossing">Crossing Flow</option></select></div>
             <p class="field-hint" id="scenario-note">PLATEAU 2025 · LOD2 buildings · Flat-ground study</p>
-            <div class="map-credit" id="map-credit"><a href="https://www.geospatial.jp/ckan/dataset/plateau-13113-shibuya-ku-2025" target="_blank" rel="noopener noreferrer" title="3D都市モデル（Project PLATEAU）渋谷区（2025年度）を加工して作成">PLATEAU · Shibuya 2025 · adapted</a><span> / </span><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a><span class="map-reference"> · Crossings calibrated with <a href="https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto" target="_blank" rel="noopener noreferrer">GSI imagery</a></span></div>
+            <div class="map-credit" id="map-credit"><a href="https://www.geospatial.jp/ckan/dataset/plateau-13113-shibuya-ku-2025" target="_blank" rel="noopener noreferrer" title="3D都市モデル（Project PLATEAU）渋谷区（2025年度）を加工して作成">PLATEAU · Shibuya 2025 · adapted</a><span> / </span><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a><span class="map-reference"> · Road markings referenced to <a href="https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto" target="_blank" rel="noopener noreferrer">GSI imagery</a></span></div>
             <div class="field-row appearance-row" id="appearance-controls"><label for="building-appearance">Building appearance</label><div class="select-wrap compact-select"><select id="building-appearance" class="simulation-control"><option value="photo" selected>Photo</option><option value="solid">Solid</option></select></div></div>
           </section>
           <details class="control-section signal-section" id="signal-controls" open hidden>
-            <summary><span class="field-label">Pedestrian signal</span><span class="signal-control-phase" id="signal-control-phase">Syncing</span></summary>
-            <div class="segmented signal-options" role="group" aria-label="Pedestrian signal mode">
-              <button class="simulation-control" data-signal-mode="auto" aria-pressed="true" title="Cycle pedestrian signals automatically">Auto</button>
-              <button class="simulation-control" data-signal-mode="green" aria-pressed="false" title="Green: pedestrians may cross">Green</button>
-              <button class="simulation-control" data-signal-mode="red" aria-pressed="false" title="Red: pedestrians wait at the crossing">Red</button>
+            <summary><span class="field-label">Traffic signals</span><span class="signal-control-phase" id="signal-control-phase">Syncing</span></summary>
+            <div class="segmented signal-options" role="group" aria-label="Requested traffic signal mode">
+              <button class="simulation-control" data-signal-mode="auto" aria-pressed="true" title="Run the automatic signal cycle">Auto</button>
+              <button class="simulation-control" data-signal-mode="pedestrian" aria-pressed="false" title="Request the pedestrian crossing interval">Walk</button>
+              <button class="simulation-control" data-signal-mode="eastWest" aria-pressed="false" title="Request east–west vehicle traffic">E–W</button>
+              <button class="simulation-control" data-signal-mode="northSouth" aria-pressed="false" title="Request north–south vehicle traffic">N–S</button>
+              <button class="simulation-control" data-signal-mode="allRed" aria-pressed="false" title="Request all signals red">All red</button>
             </div>
-            <p class="signal-help">On red, people at the curb wait. Those who just stepped off turn back, and others hurry across. Auto runs 12s red and 35s green.</p>
+            <p class="signal-help">Auto follows a ${SIGNAL_CYCLE_SECONDS}s cycle. Before each change of right of way, all signals stay red until the intersection clears. Manual requests use the same sequence.</p>
           </details>
           <section class="control-section population-section">
             <div class="field-row"><span class="field-label" id="population-label">Population</span><span class="field-unit">AGENTS</span></div>
@@ -117,8 +124,10 @@ export class Controls {
           <div class="panel-footnote"><span class="small-dot"></span>30 Hz simulation · Independent rendering</div>
         </aside>
         <div class="scene-caption" aria-live="polite"><div class="scene-kicker"><span class="scene-index" id="scene-index">01</span><span>URBAN DYNAMICS</span><span class="caption-line"></span></div><h1 id="scene-title">Shibuya Scramble</h1><p id="scene-description">Real city geometry. Individual journeys.</p></div>
-        <div class="signal-badge" id="scene-signal" data-phase="pending" role="group" aria-label="Live pedestrian signal" hidden>
-          <div class="signal-badge-state"><span class="signal-lamps" aria-hidden="true"><i></i><i></i></span><div><span class="signal-badge-kicker" id="signal-cycle-label">PEDESTRIAN SIGNAL</span><div class="signal-phase-line"><strong id="signal-phase">SYNCING</strong><span id="signal-countdown">—</span></div></div></div>
+        <div class="signal-badge" id="scene-signal" role="group" aria-label="Live intersection signals" hidden>
+          <div class="signal-badge-header"><span id="signal-cycle-label">Traffic signals</span><span id="signal-countdown" title="Time to next signal change">—</span></div>
+          <div class="signal-readings">${Object.entries(signalGroups).map(([key, label]) =>
+            `<div class="signal-reading" id="lamp-${key}"><span>${label}</span><strong><i aria-hidden="true"></i><span id="signal-${key}">—</span></strong></div>`).join('')}</div>
           <div class="signal-badge-metrics"><span>Waiting <b id="signal-waiting">—</b></span><span>Crossing <b id="signal-crossing">—</b></span></div>
         </div>
         <span class="visually-hidden" id="signal-announcement" role="status" aria-live="polite" aria-atomic="true"></span>
@@ -294,7 +303,7 @@ export class Controls {
   }
 
   /** Phase and counts are taken from worker snapshots, including manual updates while paused. */
-  setSignal(state: SignalState | undefined): void {
+  setSignal(state: SignalState | undefined, simulationTime = 0): void {
     const badge = this.get('scene-signal');
     badge.hidden = this.config.scenario !== 'shibuya';
     if (badge.hidden) {
@@ -306,21 +315,27 @@ export class Controls {
       const element = this.get(id);
       if (element.textContent !== text) element.textContent = text;
     };
-    const phase = state?.phase ?? 'pending';
-    badge.dataset.phase = phase;
-    this.get('signal-controls').dataset.phase = phase;
-    updateText('signal-phase', state ? state.phase === 'green' ? 'CROSS' : 'WAIT' : 'SYNCING');
-    updateText('signal-control-phase', state ? state.phase === 'green' ? 'Cross' : 'Wait' : 'Syncing');
-    updateText('signal-cycle-label', state ? `PEDESTRIAN SIGNAL · ${state.mode === 'auto' ? 'AUTO' : 'MANUAL'}` : 'PEDESTRIAN SIGNAL');
-    updateText('signal-countdown', state ? state.remaining === null ? 'HELD' : `${Math.max(0, Math.ceil(state.remaining))}s` : '—');
+    const groups = Object.keys(signalGroups) as (keyof typeof signalGroups)[];
+    for (const group of groups) {
+      const color = state?.[group];
+      const visible = state && group === 'pedestrian' ? pedestrianLamp(state.pedestrian, simulationTime) : color;
+      const lamp = this.get(`lamp-${group}`);
+      const displayed = visible ?? 'off';
+      if (lamp.dataset.light !== displayed) lamp.dataset.light = displayed;
+      updateText(`signal-${group}`, color ? signalColors[color] : '—');
+    }
+    const active = groups.find(group => state && state[group] !== 'red');
+    updateText('signal-control-phase', !state ? 'Syncing' : active ? signalGroups[active] : 'All red');
+    updateText('signal-cycle-label', state ? `Traffic signals · ${state.mode === 'auto' ? 'Auto' : 'Manual'}` : 'Traffic signals');
+    updateText('signal-countdown', state ? state.remaining === null ? 'Held' : `${Math.max(0, Math.ceil(state.remaining))}s` : '—');
     updateText('signal-waiting', state ? state.waiting.toLocaleString('en-US') : '—');
     updateText('signal-crossing', state ? state.crossing.toLocaleString('en-US') : '—');
-    const announcement = state ? `${state.phase}:${state.mode}` : 'pending';
+    const announcement = state
+      ? groups.map(group => `${signalGroups[group]} ${signalColors[state[group]].toLowerCase()}.`).join(' ')
+      : 'Synchronizing intersection signals.';
     if (announcement !== this.signalAnnouncement) {
       this.signalAnnouncement = announcement;
-      updateText('signal-announcement', state
-        ? `Pedestrian signal ${state.phase}: ${state.phase === 'green' ? 'cross' : 'wait'}. ${state.mode === 'auto' ? 'Automatic cycle.' : 'Manual hold.'}`
-        : 'Synchronizing pedestrian signal.');
+      updateText('signal-announcement', announcement);
     }
   }
 

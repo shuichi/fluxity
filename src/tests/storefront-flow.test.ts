@@ -3,45 +3,32 @@ import { shibuya } from '../scenarios/shibuya';
 import { Simulation } from '../simulation/Simulation';
 import { DEFAULT_CONFIG, FIXED_DT } from '../types';
 
-it('lets a shopper approach a door beside another storefront while through traffic still gives it room', () => {
-  const sim = new Simulation({ ...DEFAULT_CONFIG, count: 1, seed: 467, signalMode: 'green' }, undefined, shibuya);
-  const portals = shibuya.portals!, target = portals.findIndex(p => p.id === 'shop-39');
-  const door = portals[target], flow = sim['portals']!;
+it.each([
+  ['shop-39', 1.65],
+  ['west-street-south', 5],
+  ['south-street-west', 5],
+] as const)('walks past empty neighboring doors and completes a trip to %s', (portalId, setback) => {
+  const sim = new Simulation({ ...DEFAULT_CONFIG, count: 1, seed: 467, signalMode: 'pedestrian' }, undefined, shibuya);
+  const target = shibuya.portals!.findIndex(p => p.id === portalId);
+  const door = shibuya.portals![target], flow = sim['portals']!;
   flow.assignTarget(0, target);
   const mouth = flow.assignedArrivalMouth(0);
   const dx = door.end.x - door.approach.x, dz = door.end.z - door.approach.z;
   const length = Math.hypot(dx, dz), ux = dx / length, uz = dz / length;
-  sim.agents.current.x[0] = mouth.x - 1.65 * ux;
-  sim.agents.current.z[0] = mouth.z - 1.65 * uz;
-  const towardDoor = { x: ux, z: uz };
-  flow.guideSidewalk(0, towardDoor);
-  expect(towardDoor).toEqual({ x: ux, z: uz });
-
-  // A shopper approaching from the side can still walk around a neighboring
-  // entrance when the detour brings them closer to their own lane.
-  const sideX = mouth.x - 1.65 * ux - 3 * uz, sideZ = mouth.z - 1.65 * uz + 3 * ux;
-  sim.agents.current.x[0] = sideX;
-  sim.agents.current.z[0] = sideZ;
-  const distance = Math.hypot(mouth.x - sideX, mouth.z - sideZ);
-  const direct = { x: (mouth.x - sideX) / distance, z: (mouth.z - sideZ) / distance };
-  const detour = { ...direct };
-  flow.guideSidewalk(0, detour);
-  expect(Math.hypot(detour.x - direct.x, detour.z - direct.z)).toBeGreaterThan(0.1);
-  expect(Math.hypot(mouth.x - sideX - 0.8 * detour.x, mouth.z - sideZ - 0.8 * detour.z)).toBeLessThan(distance);
-
-  // From the same spot, a traveler passing along the facade can move away from it.
-  sim.agents.current.x[0] = mouth.x - 1.65 * ux;
-  sim.agents.current.z[0] = mouth.z - 1.65 * uz;
-  flow.assignTarget(0, portals.findIndex(p => p.id === 'north-street'));
-  const alongFacade = { x: uz, z: -ux };
-  flow.guideSidewalk(0, alongFacade);
-  expect(alongFacade.x * ux + alongFacade.z * uz).toBeLessThan(0);
+  const state = sim.agents.current;
+  state.x[0] = mouth.x - setback * ux;
+  state.z[0] = mouth.z - setback * uz;
+  state.vx[0] = state.vz[0] = 0;
+  state.heading[0] = Math.atan2(ux, uz);
+  expect(sim.navigation.urban!.sidewalks.lineInside(state.x[0], state.z[0], mouth.x, mouth.z, 0.30)).toBe(true);
+  for (let step = 0; step < 15 / FIXED_DT && !sim.completedPortalTrips(target); step++) sim.step();
+  expect(sim.completedPortalTrips(target)).toBe(1);
 });
 
 it('admits a group arriving along one side of the forecourt storefront', () => {
   const target = shibuya.portals!.findIndex(portal => portal.id === 'forecourt-building');
   const door = shibuya.portals![target], count = 40;
-  const sim = new Simulation({ ...DEFAULT_CONFIG, count, seed: 42, signalMode: 'green' }, undefined, {
+  const sim = new Simulation({ ...DEFAULT_CONFIG, count, seed: 42, signalMode: 'pedestrian' }, undefined, {
     ...shibuya, spawnTargets: shibuya.spawnZones.map(() => target),
   });
   const a = sim.agents, length = Math.hypot(door.end.x - door.approach.x, door.end.z - door.approach.z);
@@ -63,4 +50,44 @@ it('admits a group arriving along one side of the forecourt storefront', () => {
   // Each original walker must reach the interior before their slot is reused.
   // Counting generations excludes repeat visits by the few already admitted.
   expect(a.generation.filter(life => life > 0).length).toBeGreaterThanOrEqual(30);
+});
+
+it('lets opposing rows pass each other on the north sidewalk while keeping bodies clear', () => {
+  const perDirection = 16, count = 2 * perDirection;
+  const sim = new Simulation({ ...DEFAULT_CONFIG, count, seed: 42, signalMode: 'pedestrian' }, undefined, shibuya);
+  const a = sim.agents, portals = shibuya.portals!;
+  const northExit = portals.findIndex(p => p.id === 'north-street-west');
+  const eastExit = portals.findIndex(p => p.id === 'east-street-south');
+  // Two four-abreast groups meet on the public sidewalk, far from their street exits.
+  const midX = 12.24, midZ = -64;
+  const angle = Math.atan2(-0.219, 0.976), ux = Math.sin(angle), uz = Math.cos(angle);
+  for (let id = 0; id < count; id++) {
+    const sign = id < perDirection ? 1 : -1, index = id % perDirection;
+    const depth = -sign * (1.7 + Math.floor(index / 4) * 0.84), side = (index % 4 - 1.5) * 0.86;
+    const x = midX + ux * depth + uz * side, z = midZ + uz * depth - ux * side;
+    expect(sim.navigation.isSpawnable(x, z, a.radius[id] + 0.015)).toBe(true);
+    a.current.x[id] = x; a.current.z[id] = z;
+    a.current.vx[id] = ux * sign; a.current.vz[id] = uz * sign;
+    a.current.heading[id] = Math.atan2(ux * sign, uz * sign);
+    sim['portals']!.assignTarget(id, sign > 0 ? eastExit : northExit);
+  }
+  const passed = new Set<number>();
+  let minimumBodyGap = Infinity;
+  for (let step = 0; step < 30 / FIXED_DT && passed.size < count; step++) {
+    sim.step();
+    for (let id = 0; id < count; id++) {
+      const x = a.current.x[id], z = a.current.z[id];
+      const along = (x - midX) * ux + (z - midZ) * uz;
+      if ((id < perDirection ? along : -along) > 3) passed.add(id);
+      // Measure body clearance across the full 12 m stretch where the groups meet.
+      if (Math.abs(along) > 6) continue;
+      for (let peer = 0; peer < id; peer++) {
+        const gap = Math.hypot(x - a.current.x[peer], z - a.current.z[peer]) - a.radius[id] - a.radius[peer];
+        minimumBodyGap = Math.min(minimumBodyGap, gap);
+      }
+    }
+  }
+  expect(minimumBodyGap).toBeGreaterThan(-0.001);
+  expect([...passed].filter(id => id < perDirection).length).toBe(perDirection);
+  expect([...passed].filter(id => id >= perDirection).length).toBe(perDirection);
 });

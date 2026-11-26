@@ -216,8 +216,10 @@ export class Navigation {
     return this.walkable[next] && this.connected(cell, dx, dz) ? next : -1;
   }
   /** Slab test prevents steering straight through obstacles, including diagonally through corners. */
-  lineOfSight(x: number, z: number, tx: number, tz: number, radius = this.clearance): boolean {
-    if (this.scramble && !this.scramble.lineWalkable(x, z, tx, tz, radius)) return false;
+  lineOfSight(x: number, z: number, tx: number, tz: number, radius = this.clearance, crossingManeuver = false): boolean {
+    if (this.urban && crossingManeuver && !this.urban.isWalkable(x, z, radius)) {
+      if (!this.urban.crossingLine(x, z, tx, tz, radius)) return false;
+    } else if (this.scramble && !this.scramble.lineWalkable(x, z, tx, tz, radius)) return false;
     const dx = tx - x, dz = tz - z;
     for (const obstacle of this.scenario.obstacles) {
       const minX = obstacle.x - obstacle.width * 0.5 - radius;
@@ -271,27 +273,69 @@ export class Navigation {
     result.x = length > 1e-5 ? dx / length : 0;
     result.z = length > 1e-5 ? dz / length : 0;
   }
+  /** Nearest ordinary routing cell visible from the road, including a bounded crossing maneuver. */
+  nearestVisibleCell(x: number, z: number, radius: number): number {
+    const cell = this.cellAt(x, z);
+    const cx = cell % this.columns, cz = Math.floor(cell / this.columns);
+    let best = Infinity, chosen = -1;
+    // Beyond a curved stripe the nearest connected routing cell can be several
+    // grid columns away. Stop when no as-yet-unvisited ring can improve the distance.
+    const maxRing = Math.max(cx, this.columns - 1 - cx, cz, this.rows - 1 - cz);
+    const test = (nx: number, nz: number) => {
+      if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows) return;
+      const next = nz * this.columns + nx;
+      if (!this.walkable[next]) return;
+      const px = this.scenario.bounds.minX + (nx + 0.5) * this.cellSize;
+      const pz = this.scenario.bounds.minZ + (nz + 0.5) * this.cellSize;
+      const distance = (px - x) ** 2 + (pz - z) ** 2;
+      if (distance < best && this.isFree(px, pz, radius) && this.lineOfSight(x, z, px, pz, radius, true)) {
+        best = distance; chosen = next;
+      }
+    };
+    test(cx, cz);
+    for (let ring = 1; ring <= maxRing && best > ((ring - 0.5) * this.cellSize) ** 2; ring++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        test(cx + dx, cz - ring); test(cx + dx, cz + ring);
+      }
+      for (let dz = 1 - ring; dz < ring; dz++) {
+        test(cx - ring, cz + dz); test(cx + ring, cz + dz);
+      }
+    }
+    return chosen;
+  }
+
+  /** A walker pushed into the passing margin must rejoin the normal trip field on the painted surface. */
+  private visibleTripCell(x: number, z: number, cell: number, field: FlowField, radius: number, fromMargin: boolean): number {
+    const cx = cell % this.columns, cz = Math.floor(cell / this.columns), bounds = this.scenario.bounds;
+    const reach = fromMargin ? 2 : 1;
+    let chosen = -1, best = Infinity;
+    for (let oz = -reach; oz <= reach; oz++) for (let ox = -reach; ox <= reach; ox++) {
+      const nx = cx + ox, nz = cz + oz;
+      if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows) continue;
+      const next = nz * this.columns + nx;
+      if (!this.walkable[next] || !Number.isFinite(field.costs[next])) continue;
+      const px = bounds.minX + (nx + 0.5) * this.cellSize, pz = bounds.minZ + (nz + 0.5) * this.cellSize;
+      const score = field.costs[next] + Math.hypot(px - x, pz - z) * 0.1;
+      if (score >= best) continue;
+      const visible = fromMargin
+        ? this.urban!.isWalkable(px, pz, radius) && this.lineOfSight(x, z, px, pz, radius, true)
+        : this.urban!.lineWalkable(x, z, px, pz, radius);
+      if (visible) { chosen = next; best = score; }
+    }
+    return chosen;
+  }
   /** Short flow-field lookahead avoids tracing a hundred-meter polygon ray for every agent. */
   private urbanDirection(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction, radius: number): void {
     let dx = targetX - x, dz = targetZ - z;
     if (dx * dx + dz * dz > 100 || !this.urban!.lineWalkable(x, z, targetX, targetZ, radius)) {
       const field = this.fields[targetId], bounds = this.scenario.bounds;
-      let cell = this.cellAt(x, z), chosen = -1;
-      const cx = cell % this.columns, cz = Math.floor(cell / this.columns);
-      let best = Infinity;
-      // Include a nearby cell on the same component when avoidance moves off the raster centerline.
-      for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
-        const nx = cx + ox, nz = cz + oz;
-        if (nx < 0 || nx >= this.columns || nz < 0 || nz >= this.rows) continue;
-        const next = nz * this.columns + nx;
-        if (!this.walkable[next] || !Number.isFinite(field.costs[next])) continue;
-        const px = bounds.minX + (nx + 0.5) * this.cellSize, pz = bounds.minZ + (nz + 0.5) * this.cellSize;
-        const score = field.costs[next] + Math.hypot(px - x, pz - z) * 0.1;
-        if (score >= best || !this.urban!.lineWalkable(x, z, px, pz, radius)) continue;
-        chosen = next; best = score;
+      const start = this.cellAt(x, z);
+      let cell = this.visibleTripCell(x, z, start, field, radius, false);
+      if (cell < 0 && !this.urban!.isWalkable(x, z, radius) && this.urban!.canPassOnCrossing(x, z, radius)) {
+        cell = this.visibleTripCell(x, z, start, field, radius, true);
+        if (cell < 0) cell = this.nearestVisibleCell(x, z, radius);
       }
-      if (chosen < 0) { result.x = result.z = 0; return; }
-      cell = chosen;
+      if (cell < 0) { result.x = result.z = 0; return; }
       let px = bounds.minX + (cell % this.columns + 0.5) * this.cellSize;
       let pz = bounds.minZ + (Math.floor(cell / this.columns) + 0.5) * this.cellSize;
       for (let step = 0; step < 3; step++) {

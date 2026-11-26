@@ -11,15 +11,15 @@ const door: PedestrianPortal = {
   id: 'shop', kind: 'door', approach: { x: 0, z: 4 }, end: { x: 0, z: 0 }, width: 1,
 };
 
-function encounter(emerging = 0, obstacles: Obstacle[] = [], count = 2) {
+function encounter(emerging = 0, obstacles: Obstacle[] = [], count = 2, portals = [door]) {
   const scene: Scenario = {
     id: 'plaza', name: 'Shop entrance', description: '', obstacles,
     bounds: { minX: -8, maxX: 8, minZ: -8, maxZ: 8 },
-    targets: [door.approach], spawnZones: [{ x: 0, z: 4, width: 2, depth: 2 }],
+    targets: portals.map(portal => portal.approach), spawnZones: [{ x: 0, z: 4, width: 2, depth: 2 }],
   };
   const a = new AgentData(count), outside = 1 - emerging;
   const grid = new SpatialGrid(scene.bounds, count);
-  const courtesy = new DoorwayCourtesy(a, new Navigation(scene), grid, [door]);
+  const courtesy = new DoorwayCourtesy(a, new Navigation(scene), grid, portals);
   a.radius.fill(0.25); a.preferredSpeed.fill(1.35);
   a.current.z[emerging] = 1.1; a.current.vz[emerging] = 1;
   a.current.x[outside] = 0.18; a.current.z[outside] = 2.7;
@@ -49,6 +49,16 @@ describe('visible right of way at a doorway', () => {
     expect(courtesy.yielding(outside)).toBe(false);
   });
 
+  it('recognizes someone at the nearer entrance when two storefronts share a sidewalk', () => {
+    const adjacent = { ...door, id: 'adjacent', approach: { x: 3, z: 4 }, end: { x: 3, z: 0 } };
+    for (const portals of [[door, adjacent], [adjacent, door]]) {
+      const { a, outside, review, courtesy } = encounter(0, [], 2, portals);
+      a.current.x[0] += 3; a.current.x[1] += 3;
+      review(0);
+      expect(courtesy.yielding(outside)).toBe(true);
+    }
+  });
+
   it('uses the facing direction of stopped walkers and ignores a peer behind them', () => {
     const { a, outside, review, courtesy } = encounter();
     a.current.vz.fill(0);
@@ -60,21 +70,29 @@ describe('visible right of way at a doorway', () => {
     expect(courtesy.yielding(outside)).toBe(true);
   });
 
-  it('never makes a pair wait for each other when their order at the entrance changes', () => {
+  it('keeps ordinary sidewalk avoidance when two people pass along a storefront', () => {
     const { a, review, courtesy } = encounter();
-    // The walkers approach from opposite sides along the facade.
     a.current.x.set([-0.65, 0.65]); a.current.z.set([3.12, 3]);
     a.current.vx.set([1, -1]); a.current.vz.fill(0);
     a.current.heading.set([Math.PI / 2, -Math.PI / 2]);
     review(0);
-    expect(courtesy.yielding(0)).toBe(true);
+    expect(courtesy.yielding(0)).toBe(false);
     expect(courtesy.yielding(1)).toBe(false);
+  });
 
-    // The first walker edges closer to the opening during the held encounter.
-    a.current.x.set([-0.46, 0.45]); a.current.z.set([2.94, 3.16]);
-    review(0.4);
+  it('releases the old priority when walkers exchange positions in the opening', () => {
+    const { a, review, courtesy } = encounter();
+    a.current.x.fill(0);
+    a.current.z.set([0.9, 1.82]);
+    review(0);
     expect(courtesy.yielding(0)).toBe(false);
     expect(courtesy.yielding(1)).toBe(true);
+
+    a.current.z.set([1.82, 0.9]); a.current.vz.set([-1, 1]);
+    a.current.heading.set([Math.PI, 0]);
+    review(0.4);
+    expect(courtesy.yielding(1)).toBe(false);
+    expect(courtesy.yielding(0)).toBe(true);
   });
 
   it('does not yield through a wall', () => {
@@ -136,7 +154,7 @@ describe('visible right of way at a doorway', () => {
     const length = Math.hypot(approach.x - end.x, approach.z - end.z);
     const nx = (approach.x - end.x) / length, nz = (approach.z - end.z) / length;
     function step(avoidanceStrength: number) {
-      const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, seed: 42, signalMode: 'green', avoidanceStrength },
+      const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, seed: 42, signalMode: 'pedestrian', avoidanceStrength },
         undefined, scenario);
       const a = sim.agents;
       // Both start on the real sidewalk. One is moving outward along the facade

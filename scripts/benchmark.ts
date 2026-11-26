@@ -1,18 +1,19 @@
 import { performance } from 'node:perf_hooks';
 import { Simulation } from '../src/simulation/Simulation';
 import { DEFAULT_CONFIG, FIXED_DT, SNAPSHOT_STRIDE } from '../src/types';
-import type { ScenarioId, SignalMode } from '../src/types';
+import { parseSignalMode } from '../src/simulation/TrafficSignal';
+import type { ScenarioId } from '../src/types';
 import { scenarios } from '../src/scenarios';
 
 const options: Record<string, string | undefined> = Object.fromEntries(process.argv.slice(2).map(argument => argument.replace(/^--/, '').split('=')));
 const scenario = (options.scenario ?? 'plaza') as ScenarioId;
-const signalMode = (options.signal ?? 'green') as SignalMode;
+const signalMode = parseSignalMode(options.signal ?? 'pedestrian');
 const steps = Number(options.steps ?? 120);
 const counts = (options.counts ?? '1000,5000,10000,20000').split(',').map(Number);
-if (!(scenario in scenarios) || !['red', 'green', 'auto'].includes(signalMode)
+if (!(scenario in scenarios) || !signalMode
   || !Number.isInteger(steps) || steps < 1 || steps > 10000
   || counts.some(count => !Number.isInteger(count) || count < 1 || count > 20000)) {
-  throw new Error('Use --scenario=shibuya|plaza|corridor|bottleneck|crossing --signal=green|red|auto --steps=120 --counts=1000,5000');
+  throw new Error('Use --scenario=shibuya|plaza|corridor|bottleneck|crossing --signal=auto|pedestrian|eastWest|northSouth|allRed --steps=120 --counts=1000,5000');
 }
 
 /** CPU-only, deterministic workload. Browser benchmark separately measures actual rendering. */

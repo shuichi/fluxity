@@ -1,6 +1,7 @@
 """Geospatial conversion invariants; no downloads or full source dataset required."""
 import importlib.util
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -24,6 +25,23 @@ def triangle_area(mesh):
 
 
 class ConversionTests(unittest.TestCase):
+    def test_shibuya_crossing_maneuvers_reproduce_committed_polygons(self):
+        root = Path(__file__).resolve().parent.parent
+        layout = json.loads((root / 'data/shibuya/layout.json').read_text())
+        data = json.loads((root / 'src/scenarios/data/shibuya-map.json').read_text())
+        actual = plateau.crossing_maneuvers(layout['crosswalks'], data)
+        self.assertEqual(actual, data['crossingManeuvers'])
+
+    def test_crossing_margin_stops_at_missing_carriageway(self):
+        mark = {'from': {'x': 0, 'z': 0}, 'to': {'x': 10, 'z': 0}, 'width': 2}
+        paint = plateau.crossing_polygon(mark)
+        road = plateau.box(0, -3, 10, 3).difference(plateau.box(2, 1, 4, 2))
+        data = {'walkable': plateau.json_polygons(paint), 'roads': plateau.json_polygons(road)}
+        surface = plateau.from_json(plateau.crossing_maneuvers([mark], data))
+        self.assertTrue(surface.covers(plateau.Point(5, 1.75)))
+        self.assertFalse(surface.covers(plateau.Point(5, 1.81)))
+        self.assertFalse(surface.covers(plateau.Point(3, 1.2)))
+
     def test_latitude_longitude_height_axes_and_meter_scale(self):
         ring = ET.fromstring(f'''<gml:LinearRing xmlns:gml="{plateau.NS['gml']}">
           <gml:posList>35.6595 139.7005 15 35.6595 139.7006 15
@@ -34,6 +52,27 @@ class ConversionTests(unittest.TestCase):
         self.assertAlmostEqual(points[2, 2], -11.10, delta=.05)  # North is -z.
         self.assertEqual(points[2, 1], 16)  # Orthometric height is not projected.
         self.assertEqual(len(points), 3)  # Closed ring endpoint is not duplicated.
+
+    def test_shibuya_hikarie_retains_source_dimensions_in_shipped_mesh(self):
+        # Real LOD2 vertices from tile 53393596, building bldg_9ad5b600-360f-4627-8a89-fca39aad5576.
+        # West and east ground points, then a highest roof vertex. Elevations are relative to sea level.
+        ring = ET.fromstring(f'''<gml:LinearRing xmlns:gml="{plateau.NS['gml']}"><gml:posList>
+          35.65908975340395 139.70293654153244 17.11
+          35.65940914166302 139.70438874851553 17.11
+          35.65910463387202 139.70321041490345 202.0
+        </gml:posList></gml:LinearRing>''')
+        expected = plateau.project_ring(ring)
+        expected[:, 1] -= 17.11
+        root = Path(__file__).resolve().parents[1]
+        directory = root / 'public/data/shibuya'
+        vertices = np.fromfile(directory / 'vertices.bin', dtype='<f4').reshape(-1, 10)
+        indices = np.fromfile(directory / 'indices.bin', dtype='<u4')
+        mesh = vertices[np.unique(indices), :3]
+        actual = np.array([mesh[np.argmin(np.linalg.norm(mesh - point, axis=1))] for point in expected])
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=0.00005)
+        # Horizontal distance in plane rectangular zone IX and vertical relief, both in meters.
+        self.assertAlmostEqual(np.linalg.norm(actual[1] - actual[0]), 136.175, places=3)
+        self.assertAlmostEqual(actual[2, 1] - actual[0, 1], 184.89, places=3)
 
     def test_concave_ground_polygon_preserves_hole_and_area(self):
         shape = Polygon([(0, 0), (6, 0), (6, 2), (3, 2), (3, 6), (0, 6)],

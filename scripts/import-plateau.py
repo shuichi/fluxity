@@ -649,6 +649,19 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, separators=(',', ':')) + '\n')
 
 
+def crossing_maneuvers(marks, map_data):
+    """A local motion surface. Only surveyed carriageway may extend the painted sides."""
+    if not marks:
+        return []
+    # Use the same rounded surfaces that navigation and rendering consume.
+    road = from_json(map_data['roads'])
+    walkable = from_json(map_data['walkable'])
+    widened = union([crossing_polygon({**mark, 'width': mark['width'] + 2 * 0.8}) for mark in marks])
+    # Include nearby portions of both banks so a radius sweep across the seam
+    # can land fully on the sidewalk. No new sidewalk is introduced.
+    return json_polygons(clean(union([widened.intersection(road), walkable]).intersection(widened.buffer(5))))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cache-dir', type=Path, default=Path('/tmp/fluxity-plateau-source'))
@@ -723,6 +736,7 @@ def main():
             'mesh': {'vertices': 'data/shibuya/vertices.bin', 'indices': 'data/shibuya/indices.bin',
                      'vertexCount': len(mesh.vertices) // 10, 'indexCount': len(mesh.indices)},
             'statistics': statistics}
+    data['crossingManeuvers'] = crossing_maneuvers(layout.get('crosswalks', []), data)
     assert walkable.difference(SIMULATION).area < 1e-6
     assert walkable.intersection(footprints).area < 1e-6
     assert walkable.is_valid and sidewalks.is_valid and road.is_valid

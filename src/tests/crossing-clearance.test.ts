@@ -3,12 +3,12 @@ import { CrossingClearance } from '../simulation/CrossingClearance';
 import { Navigation } from '../simulation/Navigation';
 import { Simulation } from '../simulation/Simulation';
 import { SpatialGrid } from '../simulation/SpatialGrid';
-import { SIGNAL_GREEN_SECONDS, SIGNAL_RED_SECONDS } from '../simulation/TrafficSignal';
+import { SIGNAL_TIMINGS } from '../simulation/TrafficSignal';
 import { DEFAULT_CONFIG, FIXED_DT } from '../types';
 import { syntheticShibuya } from './fixtures/synthetic-shibuya';
 
 function northbound(count = 1): Simulation {
-  const sim = new Simulation({ ...DEFAULT_CONFIG, count, signalMode: 'green' }, undefined, syntheticShibuya);
+  const sim = new Simulation({ ...DEFAULT_CONFIG, count, signalMode: 'pedestrian' }, undefined, syntheticShibuya);
   const a = sim.agents;
   a.current.x[0] = -27; a.current.z[0] = -19;
   a.current.vx[0] = 0; a.current.vz[0] = a.preferredSpeed[0];
@@ -32,7 +32,7 @@ describe('crossing clearance after the light turns red', () => {
   it('returns a recent entrant to the original curb, holds them there, and resumes their trip on green', () => {
     const sim = northbound(), a = sim.agents;
     approachOnGreen(sim, -17.65);
-    sim.updateSettings({ signalMode: 'red' });
+    sim.updateSettings({ signalMode: 'allRed' });
     for (let step = 0; step < 120 && !onSidewalk(sim); step++) {
       sim.step();
       expect(sim.signal!.crossing).toBe(Number(!onSidewalk(sim)));
@@ -45,46 +45,46 @@ describe('crossing clearance after the light turns red', () => {
     }
     expect(a.targetId[0]).toBe(2);
     expect(sim.arrivals).toBe(0);
-    sim.updateSettings({ signalMode: 'green' });
+    sim.updateSettings({ signalMode: 'pedestrian' });
     approachOnGreen(sim, -16);
   });
 
   it('finishes a decision to return even if green resumes mid-turn', () => {
     const sim = northbound();
     approachOnGreen(sim, -17.65);
-    sim.updateSettings({ signalMode: 'red' });
+    sim.updateSettings({ signalMode: 'allRed' });
     for (let step = 0; step < 60 && sim.agents.current.vz[0] >= 0; step++) sim.step();
     expect(sim.agents.current.vz[0]).toBeLessThan(0);
     expect(onSidewalk(sim)).toBe(false);
-    sim.updateSettings({ signalMode: 'green' });
+    sim.updateSettings({ signalMode: 'pedestrian' });
     for (let step = 0; step < 100 && !onSidewalk(sim); step++) sim.step();
     expect(onSidewalk(sim)).toBe(true);
     expect(sim.agents.current.z[0]).toBeLessThan(-18);
     approachOnGreen(sim, -16);
   });
 
-  it('returns a recent entrant at the automatic green-to-red boundary', () => {
+  it('turns toward the nearer curb at the automatic flashing-green-to-red boundary', () => {
     const sim = northbound(), a = sim.agents;
+    // Hold a pedestrian well beyond the former 1.5 m return threshold.
     sim.updateSettings({ signalMode: 'auto', walkingSpeed: 0 });
     a.current.vz[0] = 0;
-    const cycleSteps = Math.round((SIGNAL_RED_SECONDS + SIGNAL_GREEN_SECONDS) / FIXED_DT);
-    for (let step = 0; step < cycleSteps - 30; step++) sim.step();
+    const cycleSteps = Math.round((SIGNAL_TIMINGS.pedestrian.green + SIGNAL_TIMINGS.pedestrian.warning) / FIXED_DT);
+    for (let step = 0; step < cycleSteps - 1; step++) sim.step();
+    expect(sim.signal!.pedestrian).toBe('flashingGreen');
+    a.current.z[0] = -9;
     sim.updateSettings({ walkingSpeed: 1.35 });
-    for (let step = 0; step < 29; step++) sim.step();
-    expect(sim.signal!.phase).toBe('green');
-    expect(sim.signal!.crossing).toBe(1);
     sim.step();
-    expect(sim.signal!.phase).toBe('red');
-    for (let step = 0; step < 120 && !onSidewalk(sim); step++) sim.step();
+    expect(sim.signal!.pedestrian).toBe('red');
+    for (let step = 0; step < 230 && !onSidewalk(sim); step++) sim.step();
     expect(onSidewalk(sim)).toBe(true);
     expect(a.current.z[0]).toBeLessThan(-18);
   });
 
   it('accelerates gradually in the open middle and returns to walking on the far sidewalk', () => {
     const sim = northbound(), a = sim.agents;
-    approachOnGreen(sim, -2);
+    approachOnGreen(sim, 2);
     const walking = a.preferredSpeed[0];
-    sim.updateSettings({ signalMode: 'red' });
+    sim.updateSettings({ signalMode: 'allRed' });
     let previousSpeed = Math.hypot(a.current.vx[0], a.current.vz[0]), topSpeed = previousSpeed;
     for (let step = 0; step < 600 && !onSidewalk(sim); step++) {
       sim.step();
@@ -93,7 +93,7 @@ describe('crossing clearance after the light turns red', () => {
       topSpeed = Math.max(topSpeed, speed);
       previousSpeed = speed;
     }
-    expect(topSpeed).toBeGreaterThan(1.25 * walking);
+    expect(topSpeed).toBeGreaterThan(1.15 * walking);
     expect(onSidewalk(sim)).toBe(true);
     expect(a.current.z[0]).toBeGreaterThan(18);
     for (let step = 0; step < 60; step++) sim.step();
@@ -104,7 +104,7 @@ describe('crossing clearance after the light turns red', () => {
   it('keeps a stationary pedestrian stationary when walking speed is set to zero', () => {
     const sim = northbound(), a = sim.agents;
     approachOnGreen(sim, -2);
-    sim.updateSettings({ walkingSpeed: 0, signalMode: 'red' });
+    sim.updateSettings({ walkingSpeed: 0, signalMode: 'allRed' });
     for (let step = 0; step < 60; step++) sim.step();
     const x = a.current.x[0], z = a.current.z[0];
     for (let step = 0; step < 60; step++) sim.step();
@@ -116,7 +116,7 @@ describe('crossing clearance after the light turns red', () => {
   it('continues to the far sidewalk when red starts one step from the exit', () => {
     const sim = northbound();
     approachOnGreen(sim, 17.8);
-    sim.updateSettings({ signalMode: 'red' });
+    sim.updateSettings({ signalMode: 'allRed' });
     for (let step = 0; step < 60 && !onSidewalk(sim); step++) sim.step();
     expect(onSidewalk(sim)).toBe(true);
     expect(sim.agents.current.z[0]).toBeGreaterThan(18);
@@ -126,13 +126,12 @@ describe('crossing clearance after the light turns red', () => {
   it('keeps a landing while making progress but changes it if only lateral motion is possible', () => {
     const nav = new Navigation(syntheticShibuya), grid = new SpatialGrid(syntheticShibuya.bounds, 1);
     const clearance = new CrossingClearance(nav, grid, 1);
-    const x = new Float32Array([-27]), z = new Float32Array([0]);
+    const x = new Float32Array([-27]), z = new Float32Array([3]);
     const direction = { x: 0, z: 1 }, radius = 0.27;
     const guide = () => {
       grid.rebuild(x, z, 1);
       clearance.guide(0, x[0], z[0], radius, FIXED_DT, 1.35, direction);
     };
-    clearance.observeStep(0, -27, -18.3, radius, false);
     guide();
     const firstX = clearance.landingX[0], firstZ = clearance.landingZ[0];
     expect(firstX).toBeLessThan(-18);
@@ -168,7 +167,7 @@ describe('crossing clearance after the light turns red', () => {
       a.targetId[id] = 0; a.targetX[id] = a.current.x[id]; a.targetZ[id] = -52;
     }
     const initialX = a.current.x.slice();
-    sim.updateSettings({ signalMode: 'red' });
+    sim.updateSettings({ signalMode: 'allRed' });
     let madeSpace = false;
     for (let step = 0; step < 240; step++) {
       sim.step();

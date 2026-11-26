@@ -1,0 +1,1889 @@
+{
+  "config": {
+    "count": 1000,
+    "seed": 42,
+    "scenario": "shibuya",
+    "simulationSpeed": 2,
+    "walkingSpeed": 1.35,
+    "avoidanceStrength": 1,
+    "signalMode": "auto"
+  },
+  "clockHz": 30,
+  "metaAI": false,
+  "sampleSeconds": 1,
+  "spanMetres": 2,
+  "groupRadiusMetres": 5,
+  "nearGoalRadiusMetres": 12,
+  "before": {
+    "initial": {
+      "positions": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+      "traits": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+      "routes": "2a53f13f299de67374931e9266bec03775170622595c8f98e61c4817c219c38c"
+    },
+    "snapshots": [
+      {
+        "second": 160,
+        "signal": {
+          "mode": "auto",
+          "phase": "green",
+          "remaining": 28,
+          "waiting": 0,
+          "crossing": 98
+        },
+        "arrivals": 266,
+        "shopEntries": 95,
+        "stalled": {
+          "30": 501,
+          "60": 376,
+          "300": null
+        },
+        "largestGroups": [
+          {
+            "x": -30.54,
+            "z": -16.95,
+            "people": 144
+          },
+          {
+            "x": 10.01,
+            "z": -53.16,
+            "people": 111
+          },
+          {
+            "x": -46.48,
+            "z": 5.65,
+            "people": 85
+          }
+        ],
+        "largestStalled30Groups": [
+          {
+            "x": -32.55,
+            "z": -16.95,
+            "people": 113
+          },
+          {
+            "x": 10.69,
+            "z": -52.75,
+            "people": 96
+          },
+          {
+            "x": -46.48,
+            "z": 5.65,
+            "people": 56
+          }
+        ]
+      },
+      {
+        "second": 460,
+        "signal": {
+          "mode": "auto",
+          "phase": "green",
+          "remaining": 10,
+          "waiting": 0,
+          "crossing": 165
+        },
+        "arrivals": 687,
+        "shopEntries": 212,
+        "stalled": {
+          "30": 652,
+          "60": 567,
+          "300": 264
+        },
+        "largestGroups": [
+          {
+            "x": -29.75,
+            "z": -15.02,
+            "people": 179
+          },
+          {
+            "x": 10.27,
+            "z": -54.62,
+            "people": 145
+          },
+          {
+            "x": 20.73,
+            "z": -16.63,
+            "people": 136
+          }
+        ],
+        "largestStalled30Groups": [
+          {
+            "x": 10.47,
+            "z": -53.76,
+            "people": 144
+          },
+          {
+            "x": -31.31,
+            "z": -17,
+            "people": 131
+          },
+          {
+            "x": 20.73,
+            "z": -16.63,
+            "people": 115
+          }
+        ]
+      },
+      {
+        "second": 1109,
+        "signal": {
+          "mode": "auto",
+          "phase": "green",
+          "remaining": 19,
+          "waiting": 0,
+          "crossing": 148
+        },
+        "arrivals": 930,
+        "shopEntries": 273,
+        "stalled": {
+          "30": 746,
+          "60": 704,
+          "300": 620
+        },
+        "largestGroups": [
+          {
+            "x": -29,
+            "z": -14.48,
+            "people": 189
+          },
+          {
+            "x": 10.49,
+            "z": -55.4,
+            "people": 163
+          },
+          {
+            "x": 21.2,
+            "z": -17.17,
+            "people": 150
+          }
+        ],
+        "largestStalled30Groups": [
+          {
+            "x": 21.2,
+            "z": -17.17,
+            "people": 144
+          },
+          {
+            "x": -31.92,
+            "z": -17.52,
+            "people": 137
+          },
+          {
+            "x": 9.74,
+            "z": -51.64,
+            "people": 109
+          }
+        ]
+      }
+    ],
+    "points": [
+      {
+        "id": "northwest-shop",
+        "kind": "door",
+        "assigned": 13,
+        "completed": 6,
+        "stalled300Ever": 5,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 1,
+        "nearGoal300AtEnd": 1
+      },
+      {
+        "id": "north-shop",
+        "kind": "door",
+        "assigned": 23,
+        "completed": 15,
+        "stalled300Ever": 7,
+        "stalled300AtEnd": 7,
+        "nearGoal300Ever": 6,
+        "nearGoal300AtEnd": 6
+      },
+      {
+        "id": "east-shop",
+        "kind": "door",
+        "assigned": 15,
+        "completed": 14,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "forecourt-building",
+        "kind": "door",
+        "assigned": 25,
+        "completed": 21,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 2,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "southwest-shop",
+        "kind": "door",
+        "assigned": 24,
+        "completed": 22,
+        "stalled300Ever": 2,
+        "stalled300AtEnd": 2,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "north-street",
+        "kind": "street",
+        "assigned": 159,
+        "completed": 22,
+        "stalled300Ever": 112,
+        "stalled300AtEnd": 107,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-06",
+        "kind": "door",
+        "assigned": 5,
+        "completed": 3,
+        "stalled300Ever": 2,
+        "stalled300AtEnd": 2,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-07",
+        "kind": "door",
+        "assigned": 12,
+        "completed": 2,
+        "stalled300Ever": 10,
+        "stalled300AtEnd": 10,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-08",
+        "kind": "door",
+        "assigned": 11,
+        "completed": 2,
+        "stalled300Ever": 9,
+        "stalled300AtEnd": 9,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-09",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 2,
+        "stalled300Ever": 5,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-10",
+        "kind": "door",
+        "assigned": 5,
+        "completed": 1,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-11",
+        "kind": "door",
+        "assigned": 7,
+        "completed": 0,
+        "stalled300Ever": 7,
+        "stalled300AtEnd": 7,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-12",
+        "kind": "door",
+        "assigned": 9,
+        "completed": 1,
+        "stalled300Ever": 6,
+        "stalled300AtEnd": 6,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-13",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 3,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-14",
+        "kind": "door",
+        "assigned": 9,
+        "completed": 4,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-15",
+        "kind": "door",
+        "assigned": 6,
+        "completed": 4,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-16",
+        "kind": "door",
+        "assigned": 7,
+        "completed": 2,
+        "stalled300Ever": 5,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-17",
+        "kind": "door",
+        "assigned": 7,
+        "completed": 4,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-18",
+        "kind": "door",
+        "assigned": 9,
+        "completed": 3,
+        "stalled300Ever": 2,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-19",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 7,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-20",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 6,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-21",
+        "kind": "door",
+        "assigned": 6,
+        "completed": 0,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-22",
+        "kind": "door",
+        "assigned": 16,
+        "completed": 12,
+        "stalled300Ever": 2,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-23",
+        "kind": "door",
+        "assigned": 7,
+        "completed": 1,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-24",
+        "kind": "door",
+        "assigned": 11,
+        "completed": 7,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-25",
+        "kind": "door",
+        "assigned": 6,
+        "completed": 1,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-26",
+        "kind": "door",
+        "assigned": 10,
+        "completed": 1,
+        "stalled300Ever": 8,
+        "stalled300AtEnd": 6,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-27",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 0,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-28",
+        "kind": "door",
+        "assigned": 3,
+        "completed": 0,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 3,
+        "nearGoal300AtEnd": 3
+      },
+      {
+        "id": "shop-29",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 0,
+        "stalled300Ever": 6,
+        "stalled300AtEnd": 6,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-30",
+        "kind": "door",
+        "assigned": 10,
+        "completed": 2,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-31",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 1,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-32",
+        "kind": "door",
+        "assigned": 11,
+        "completed": 5,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-33",
+        "kind": "door",
+        "assigned": 10,
+        "completed": 10,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-34",
+        "kind": "door",
+        "assigned": 12,
+        "completed": 11,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-35",
+        "kind": "door",
+        "assigned": 7,
+        "completed": 6,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-36",
+        "kind": "door",
+        "assigned": 10,
+        "completed": 6,
+        "stalled300Ever": 2,
+        "stalled300AtEnd": 2,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-37",
+        "kind": "door",
+        "assigned": 11,
+        "completed": 8,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-38",
+        "kind": "door",
+        "assigned": 5,
+        "completed": 2,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-39",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 7,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-40",
+        "kind": "door",
+        "assigned": 9,
+        "completed": 8,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-41",
+        "kind": "door",
+        "assigned": 5,
+        "completed": 4,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-42",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 6,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-43",
+        "kind": "door",
+        "assigned": 15,
+        "completed": 11,
+        "stalled300Ever": 4,
+        "stalled300AtEnd": 4,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-44",
+        "kind": "door",
+        "assigned": 10,
+        "completed": 9,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-45",
+        "kind": "door",
+        "assigned": 5,
+        "completed": 4,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-46",
+        "kind": "door",
+        "assigned": 7,
+        "completed": 4,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 3,
+        "nearGoal300Ever": 1,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-47",
+        "kind": "door",
+        "assigned": 9,
+        "completed": 5,
+        "stalled300Ever": 3,
+        "stalled300AtEnd": 2,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-48",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 7,
+        "stalled300Ever": 1,
+        "stalled300AtEnd": 1,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-49",
+        "kind": "door",
+        "assigned": 8,
+        "completed": 8,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-50",
+        "kind": "door",
+        "assigned": 5,
+        "completed": 5,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "north-street-west",
+        "kind": "street",
+        "assigned": 164,
+        "completed": 10,
+        "stalled300Ever": 140,
+        "stalled300AtEnd": 140,
+        "nearGoal300Ever": 2,
+        "nearGoal300AtEnd": 2
+      },
+      {
+        "id": "northwest-street-west",
+        "kind": "street",
+        "assigned": 115,
+        "completed": 25,
+        "stalled300Ever": 40,
+        "stalled300AtEnd": 35,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "northwest-street-east",
+        "kind": "street",
+        "assigned": 119,
+        "completed": 63,
+        "stalled300Ever": 45,
+        "stalled300AtEnd": 37,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "west-street-north",
+        "kind": "street",
+        "assigned": 193,
+        "completed": 5,
+        "stalled300Ever": 106,
+        "stalled300AtEnd": 98,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "west-street-south",
+        "kind": "street",
+        "assigned": 157,
+        "completed": 103,
+        "stalled300Ever": 18,
+        "stalled300AtEnd": 15,
+        "nearGoal300Ever": 10,
+        "nearGoal300AtEnd": 6
+      },
+      {
+        "id": "east-street-north",
+        "kind": "street",
+        "assigned": 176,
+        "completed": 128,
+        "stalled300Ever": 19,
+        "stalled300AtEnd": 17,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "east-street-south",
+        "kind": "street",
+        "assigned": 100,
+        "completed": 74,
+        "stalled300Ever": 16,
+        "stalled300AtEnd": 13,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "south-street-west",
+        "kind": "street",
+        "assigned": 162,
+        "completed": 134,
+        "stalled300Ever": 18,
+        "stalled300AtEnd": 16,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "south-street-east",
+        "kind": "street",
+        "assigned": 110,
+        "completed": 93,
+        "stalled300Ever": 12,
+        "stalled300AtEnd": 10,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      }
+    ]
+  },
+  "after": {
+    "initial": {
+      "positions": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+      "traits": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+      "routes": "2a53f13f299de67374931e9266bec03775170622595c8f98e61c4817c219c38c"
+    },
+    "snapshots": [
+      {
+        "second": 160,
+        "signal": {
+          "mode": "auto",
+          "phase": "green",
+          "remaining": 28,
+          "waiting": 0,
+          "crossing": 215
+        },
+        "arrivals": 688,
+        "shopEntries": 236,
+        "stalled": {
+          "30": 2,
+          "60": 0,
+          "300": null
+        },
+        "largestGroups": [
+          {
+            "x": 10.93,
+            "z": 19.73,
+            "people": 117
+          },
+          {
+            "x": -22.94,
+            "z": 16.26,
+            "people": 82
+          },
+          {
+            "x": -26.54,
+            "z": -2.19,
+            "people": 36
+          }
+        ],
+        "largestStalled30Groups": [
+          {
+            "x": 10.1,
+            "z": 23.13,
+            "people": 2
+          }
+        ]
+      },
+      {
+        "second": 460,
+        "signal": {
+          "mode": "auto",
+          "phase": "green",
+          "remaining": 10,
+          "waiting": 0,
+          "crossing": 290
+        },
+        "arrivals": 2567,
+        "shopEntries": 665,
+        "stalled": {
+          "30": 1,
+          "60": 0,
+          "300": 0
+        },
+        "largestGroups": [
+          {
+            "x": 8.01,
+            "z": 20.35,
+            "people": 88
+          },
+          {
+            "x": -7.36,
+            "z": 18.24,
+            "people": 46
+          },
+          {
+            "x": -25.92,
+            "z": 7.36,
+            "people": 36
+          }
+        ],
+        "largestStalled30Groups": [
+          {
+            "x": 8.67,
+            "z": 24.04,
+            "people": 1
+          }
+        ]
+      },
+      {
+        "second": 1109,
+        "signal": {
+          "mode": "auto",
+          "phase": "green",
+          "remaining": 19,
+          "waiting": 0,
+          "crossing": 269
+        },
+        "arrivals": 6449,
+        "shopEntries": 1649,
+        "stalled": {
+          "30": 1,
+          "60": 0,
+          "300": 0
+        },
+        "largestGroups": [
+          {
+            "x": 10.51,
+            "z": 20.47,
+            "people": 118
+          },
+          {
+            "x": -27.98,
+            "z": 3.91,
+            "people": 42
+          },
+          {
+            "x": -29.37,
+            "z": -11.02,
+            "people": 29
+          }
+        ],
+        "largestStalled30Groups": [
+          {
+            "x": 9.79,
+            "z": 24.98,
+            "people": 1
+          }
+        ]
+      }
+    ],
+    "points": [
+      {
+        "id": "northwest-shop",
+        "kind": "door",
+        "assigned": 46,
+        "completed": 42,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "north-shop",
+        "kind": "door",
+        "assigned": 79,
+        "completed": 67,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "east-shop",
+        "kind": "door",
+        "assigned": 67,
+        "completed": 61,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "forecourt-building",
+        "kind": "door",
+        "assigned": 85,
+        "completed": 83,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "southwest-shop",
+        "kind": "door",
+        "assigned": 80,
+        "completed": 74,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "north-street",
+        "kind": "street",
+        "assigned": 552,
+        "completed": 465,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-06",
+        "kind": "door",
+        "assigned": 42,
+        "completed": 40,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-07",
+        "kind": "door",
+        "assigned": 31,
+        "completed": 26,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-08",
+        "kind": "door",
+        "assigned": 28,
+        "completed": 28,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-09",
+        "kind": "door",
+        "assigned": 25,
+        "completed": 23,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-10",
+        "kind": "door",
+        "assigned": 46,
+        "completed": 39,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-11",
+        "kind": "door",
+        "assigned": 29,
+        "completed": 25,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-12",
+        "kind": "door",
+        "assigned": 42,
+        "completed": 39,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-13",
+        "kind": "door",
+        "assigned": 38,
+        "completed": 31,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-14",
+        "kind": "door",
+        "assigned": 32,
+        "completed": 29,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-15",
+        "kind": "door",
+        "assigned": 33,
+        "completed": 30,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-16",
+        "kind": "door",
+        "assigned": 30,
+        "completed": 28,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-17",
+        "kind": "door",
+        "assigned": 35,
+        "completed": 32,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-18",
+        "kind": "door",
+        "assigned": 47,
+        "completed": 43,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-19",
+        "kind": "door",
+        "assigned": 36,
+        "completed": 33,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-20",
+        "kind": "door",
+        "assigned": 31,
+        "completed": 26,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-21",
+        "kind": "door",
+        "assigned": 32,
+        "completed": 31,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-22",
+        "kind": "door",
+        "assigned": 30,
+        "completed": 28,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-23",
+        "kind": "door",
+        "assigned": 23,
+        "completed": 19,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-24",
+        "kind": "door",
+        "assigned": 42,
+        "completed": 36,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-25",
+        "kind": "door",
+        "assigned": 36,
+        "completed": 30,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-26",
+        "kind": "door",
+        "assigned": 42,
+        "completed": 34,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-27",
+        "kind": "door",
+        "assigned": 35,
+        "completed": 28,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-28",
+        "kind": "door",
+        "assigned": 26,
+        "completed": 23,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-29",
+        "kind": "door",
+        "assigned": 35,
+        "completed": 30,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-30",
+        "kind": "door",
+        "assigned": 48,
+        "completed": 41,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-31",
+        "kind": "door",
+        "assigned": 37,
+        "completed": 31,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-32",
+        "kind": "door",
+        "assigned": 38,
+        "completed": 36,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-33",
+        "kind": "door",
+        "assigned": 35,
+        "completed": 30,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-34",
+        "kind": "door",
+        "assigned": 36,
+        "completed": 33,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-35",
+        "kind": "door",
+        "assigned": 30,
+        "completed": 24,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-36",
+        "kind": "door",
+        "assigned": 38,
+        "completed": 33,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-37",
+        "kind": "door",
+        "assigned": 40,
+        "completed": 38,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-38",
+        "kind": "door",
+        "assigned": 24,
+        "completed": 20,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-39",
+        "kind": "door",
+        "assigned": 37,
+        "completed": 32,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-40",
+        "kind": "door",
+        "assigned": 32,
+        "completed": 28,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-41",
+        "kind": "door",
+        "assigned": 21,
+        "completed": 18,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-42",
+        "kind": "door",
+        "assigned": 30,
+        "completed": 22,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-43",
+        "kind": "door",
+        "assigned": 39,
+        "completed": 38,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-44",
+        "kind": "door",
+        "assigned": 25,
+        "completed": 22,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-45",
+        "kind": "door",
+        "assigned": 22,
+        "completed": 19,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-46",
+        "kind": "door",
+        "assigned": 35,
+        "completed": 26,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-47",
+        "kind": "door",
+        "assigned": 38,
+        "completed": 33,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-48",
+        "kind": "door",
+        "assigned": 31,
+        "completed": 29,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-49",
+        "kind": "door",
+        "assigned": 25,
+        "completed": 22,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "shop-50",
+        "kind": "door",
+        "assigned": 21,
+        "completed": 16,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "north-street-west",
+        "kind": "street",
+        "assigned": 670,
+        "completed": 584,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "northwest-street-west",
+        "kind": "street",
+        "assigned": 361,
+        "completed": 317,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "northwest-street-east",
+        "kind": "street",
+        "assigned": 418,
+        "completed": 369,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "west-street-north",
+        "kind": "street",
+        "assigned": 622,
+        "completed": 516,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "west-street-south",
+        "kind": "street",
+        "assigned": 627,
+        "completed": 532,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "east-street-north",
+        "kind": "street",
+        "assigned": 738,
+        "completed": 640,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "east-street-south",
+        "kind": "street",
+        "assigned": 434,
+        "completed": 381,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "south-street-west",
+        "kind": "street",
+        "assigned": 688,
+        "completed": 612,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      },
+      {
+        "id": "south-street-east",
+        "kind": "street",
+        "assigned": 474,
+        "completed": 384,
+        "stalled300Ever": 0,
+        "stalled300AtEnd": 0,
+        "nearGoal300Ever": 0,
+        "nearGoal300AtEnd": 0
+      }
+    ]
+  },
+  "provenance": {
+    "beforeCommit": "11e6a3f",
+    "afterSourceSHA256": {
+      "src/simulation/Simulation.ts": "393fbc9efa71058a55abecb662c97412d77172d824541c76c06066d35c373094",
+      "src/simulation/PortalFlow.ts": "6a2390d2726a23ac0ec6deaf254147deb0782f0f173840e3d0b8ae13dc54ce6e",
+      "src/simulation/DoorwayClearance.ts": "9ee798c14d7bde0a31545b302d84d31373c149674fb1b6e37250ce1d0c1a9c18",
+      "src/simulation/DoorwayCourtesy.ts": "50cf4b10247aff1fa41464a6c8ddf224981ea9c5c351a37790cb18c3e9fb42c1",
+      "src/simulation/SidewalkPassing.ts": "ccf97635a7159a612af9b398445cee80f5998f608e22a7b3223c992c7d41168e"
+    }
+  },
+  "fixedLocationsAt160": [
+    {
+      "x": -32.551204681396484,
+      "z": -16.946035385131836,
+      "before": {
+        "total": 129,
+        "stalled30": 113
+      },
+      "after": {
+        "total": 5,
+        "stalled30": 0
+      }
+    },
+    {
+      "x": 10.688790321350098,
+      "z": -52.75041580200195,
+      "before": {
+        "total": 109,
+        "stalled30": 96
+      },
+      "after": {
+        "total": 2,
+        "stalled30": 0
+      }
+    },
+    {
+      "x": -46.47657775878906,
+      "z": 5.650722503662109,
+      "before": {
+        "total": 85,
+        "stalled30": 56
+      },
+      "after": {
+        "total": 18,
+        "stalled30": 0
+      }
+    }
+  ],
+  "turnoverOfLargestGroupAt160": {
+    "before": {
+      "label": "largest-at-160",
+      "x": -30.53652572631836,
+      "z": -16.950838088989258,
+      "checkpoints": [
+        {
+          "second": 175,
+          "totalInCircle": 147,
+          "sameStillPresent": 139,
+          "exitedAtLeastOnce": 6
+        },
+        {
+          "second": 190,
+          "totalInCircle": 152,
+          "sameStillPresent": 138,
+          "exitedAtLeastOnce": 7
+        },
+        {
+          "second": 207,
+          "totalInCircle": 158,
+          "sameStillPresent": 137,
+          "exitedAtLeastOnce": 9
+        }
+      ],
+      "membersAt160": 144
+    },
+    "after": {
+      "label": "largest-at-160",
+      "x": 10.934080123901367,
+      "z": 19.73324203491211,
+      "checkpoints": [
+        {
+          "second": 175,
+          "totalInCircle": 67,
+          "sameStillPresent": 41,
+          "exitedAtLeastOnce": 79
+        },
+        {
+          "second": 190,
+          "totalInCircle": 65,
+          "sameStillPresent": 7,
+          "exitedAtLeastOnce": 112
+        },
+        {
+          "second": 207,
+          "totalInCircle": 88,
+          "sameStillPresent": 3,
+          "exitedAtLeastOnce": 114
+        }
+      ],
+      "membersAt160": 117
+    }
+  },
+  "soloChecks": [
+    {
+      "setbackMetres": 1.65,
+      "seed": 467,
+      "limitSeconds": 60,
+      "signalMode": "green",
+      "before": {
+        "completed": 60,
+        "incomplete": [],
+        "slowestCompletedSeconds": 6.43
+      },
+      "after": {
+        "completed": 60,
+        "incomplete": [],
+        "slowestCompletedSeconds": 6.43
+      }
+    },
+    {
+      "setbackMetres": 5,
+      "seed": 467,
+      "limitSeconds": 60,
+      "signalMode": "green",
+      "before": {
+        "completed": 58,
+        "incomplete": [
+          "west-street-south",
+          "south-street-west"
+        ],
+        "slowestCompletedSeconds": 9.03
+      },
+      "after": {
+        "completed": 60,
+        "incomplete": [],
+        "slowestCompletedSeconds": 8.4
+      }
+    }
+  ],
+  "secondSeed160": {
+    "seed": 137,
+    "initial": {
+      "positions": "40569b0a2867fe7c27024d545eeaf5f1303b395d8ed18731e64f081e9bcb585a",
+      "traits": "9984cdb6b9e08632b9951a6efc9a32e3b3edc9ba80ac131529c50514dc3e0134",
+      "routes": "903ae8f7d2027d4f90a439e4a72785f71dba11a44e1e6b70ed67d5bfef0e7cef"
+    },
+    "before": {
+      "second": 160,
+      "signal": {
+        "mode": "auto",
+        "phase": "green",
+        "remaining": 28,
+        "waiting": 0,
+        "crossing": 100
+      },
+      "arrivals": 278,
+      "shopEntries": 101,
+      "stalled": {
+        "30": 409,
+        "60": 337,
+        "300": null
+      },
+      "largestGroups": [
+        {
+          "x": -31.25,
+          "z": -16.82,
+          "people": 140
+        },
+        {
+          "x": 9.71,
+          "z": -52.48,
+          "people": 108
+        },
+        {
+          "x": -46.12,
+          "z": 7.31,
+          "people": 93
+        }
+      ],
+      "largestStalled30Groups": [
+        {
+          "x": -31.25,
+          "z": -16.82,
+          "people": 110
+        },
+        {
+          "x": 10.93,
+          "z": -52.19,
+          "people": 99
+        },
+        {
+          "x": 6.06,
+          "z": -29.04,
+          "people": 48
+        }
+      ]
+    },
+    "after": {
+      "second": 160,
+      "signal": {
+        "mode": "auto",
+        "phase": "green",
+        "remaining": 28,
+        "waiting": 0,
+        "crossing": 200
+      },
+      "arrivals": 703,
+      "shopEntries": 219,
+      "stalled": {
+        "30": 0,
+        "60": 0,
+        "300": null
+      },
+      "largestGroups": [
+        {
+          "x": 10.72,
+          "z": 20.23,
+          "people": 114
+        },
+        {
+          "x": -22.91,
+          "z": 15.18,
+          "people": 81
+        },
+        {
+          "x": -27.8,
+          "z": -3.71,
+          "people": 35
+        }
+      ],
+      "largestStalled30Groups": []
+    }
+  },
+  "secondSeedExtendedAfter": {
+    "snapshot": {
+      "second": 1109,
+      "signal": {
+        "mode": "auto",
+        "phase": "green",
+        "remaining": 19,
+        "waiting": 0,
+        "crossing": 296
+      },
+      "arrivals": 6404,
+      "shopEntries": 1635,
+      "stalled": {
+        "30": 0,
+        "60": 0,
+        "300": 0
+      },
+      "largestGroups": [
+        {
+          "x": 10.87,
+          "z": 20.02,
+          "people": 123
+        },
+        {
+          "x": -20.46,
+          "z": 14.94,
+          "people": 51
+        },
+        {
+          "x": -29.41,
+          "z": -9.28,
+          "people": 32
+        }
+      ],
+      "largestStalled30Groups": []
+    },
+    "stalled300Ever": 0
+  },
+  "tenMetreSpan": {
+    "before": {
+      "sec": 1109,
+      "arrivals": 930,
+      "cumulative": 925,
+      "active": 804,
+      "longest": 1109,
+      "initialIncomplete": 485,
+      "longestFinishedTrip": 1091,
+      "longestFinishedInitialTrip": 1091,
+      "oldestCurrent": 1109,
+      "example": {
+        "i": 68,
+        "generation": 0,
+        "start": 0,
+        "end": 1109,
+        "target": "shop-43",
+        "x": 21.56772804260254,
+        "z": 38.39188766479492
+      },
+      "dest": {
+        "shop-43": 4,
+        "shop-23": 5,
+        "north-street-west": 144,
+        "east-street-south": 21,
+        "northwest-street-east": 53,
+        "southwest-shop": 2,
+        "west-street-north": 145,
+        "northwest-street-west": 72,
+        "east-street-north": 42,
+        "shop-31": 6,
+        "forecourt-building": 4,
+        "north-shop": 8,
+        "shop-16": 6,
+        "shop-25": 3,
+        "shop-18": 4,
+        "west-street-south": 77,
+        "shop-35": 3,
+        "shop-14": 5,
+        "south-street-east": 17,
+        "north-street": 130,
+        "shop-48": 1,
+        "shop-32": 5,
+        "south-street-west": 28,
+        "shop-40": 3,
+        "shop-21": 6,
+        "shop-44": 1,
+        "east-shop": 1,
+        "shop-24": 4,
+        "shop-33": 3,
+        "northwest-shop": 7,
+        "shop-11": 7,
+        "shop-30": 5,
+        "shop-38": 3,
+        "shop-09": 6,
+        "shop-17": 3,
+        "shop-06": 2,
+        "shop-26": 9,
+        "shop-13": 4,
+        "shop-22": 2,
+        "shop-46": 4,
+        "shop-29": 7,
+        "shop-10": 4,
+        "shop-27": 6,
+        "shop-28": 3,
+        "shop-41": 1,
+        "shop-39": 2,
+        "shop-36": 5,
+        "shop-47": 3,
+        "shop-34": 1,
+        "shop-12": 6,
+        "shop-07": 10,
+        "shop-45": 1,
+        "shop-08": 9,
+        "shop-19": 1,
+        "shop-42": 4,
+        "shop-15": 3,
+        "shop-37": 2,
+        "shop-20": 2
+      }
+    },
+    "after": {
+      "sec": 1109,
+      "arrivals": 6449,
+      "cumulative": 0,
+      "active": 0,
+      "longest": 136,
+      "initialIncomplete": 0,
+      "longestFinishedTrip": 598,
+      "longestFinishedInitialTrip": 502,
+      "oldestCurrent": 495,
+      "example": {
+        "i": 929,
+        "generation": 0,
+        "start": 29,
+        "end": 165,
+        "target": "north-street-west",
+        "x": 9.557819366455078,
+        "z": 17.468656539916992
+      },
+      "dest": {}
+    }
+  }
+}

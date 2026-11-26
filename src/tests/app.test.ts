@@ -74,7 +74,7 @@ class FakeWorker {
   }
   snapshot(step = 0, stepMs = 2, init = this.latestInit()): SnapshotMessage {
     return {
-      type: 'snapshot', generation: init.generation, count: init.config.count, step,
+      type: 'snapshot', generation: init.generation, count: init.config.count, vehicleCapacity: 0, step,
       simulationTime: step / 30, stepMs, meanSpeed: 1.35, congestion: 0.1,
       buffer: new ArrayBuffer(init.config.count * SNAPSHOT_STRIDE * 4),
     };
@@ -214,13 +214,13 @@ describe('application / worker integration', () => {
     const worker = FakeWorker.instance;
     const initial = worker.latestInit();
     controls().onPause();
-    controls().onConfig({ signalMode: 'green' }, false);
+    controls().onConfig({ signalMode: 'pedestrian' }, false);
     expect(worker.latestInit()).toBe(initial);
-    expect(worker.messages.at(-1)).toMatchObject({ type: 'settings', settings: { signalMode: 'green' } });
-    const signal = { mode: 'green' as const, phase: 'green' as const, remaining: null, waiting: 0, crossing: 12 };
+    expect(worker.messages.at(-1)).toMatchObject({ type: 'settings', settings: { signalMode: 'pedestrian' } });
+    const signal = { mode: 'pedestrian' as const, pedestrian: 'green' as const, eastWest: 'red' as const, northSouth: 'red' as const, remaining: null, waiting: 0, crossing: 12 };
     worker.emit({ ...worker.snapshot(), signal });
     frame();
-    expect(harness.controls.setSignal).toHaveBeenLastCalledWith(signal);
+    expect(harness.controls.setSignal).toHaveBeenLastCalledWith(signal, 0);
     expect(harness.renderer.render).toHaveBeenLastCalledWith(
       expect.any(Float32Array), expect.any(Float32Array), initial.config.count, expect.any(Number),
       expect.objectContaining({ signal }),

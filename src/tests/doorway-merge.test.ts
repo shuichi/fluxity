@@ -49,6 +49,7 @@ describe('pedestrians merging at a doorway', () => {
     const doors = sim.scenario.portals!.filter(portal => portal.kind === 'door');
     const doorway = new DoorwayClearance(doors, sim.grid, a, nav);
     // A tangential step from the seed-42 run, with one neighbor reserving part of its length.
+    a.portalStage[1] = 1; // A walker aligning with the entrance needs full shoulder clearance.
     a.scale.set([0.95718402, 1]);
     a.radius.set([a.scale[0] * 0.25, 0.25]);
     a.current.x.set([27.689278, 26.9716473]); a.current.z.set([40.19928, 40.2873955]);

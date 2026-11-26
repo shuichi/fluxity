@@ -189,25 +189,49 @@ export class PolygonRegion {
 export class UrbanGeometry {
   readonly walkable: PolygonRegion;
   readonly sidewalks: PolygonRegion;
+  private readonly maneuvers?: PolygonRegion;
+  private readonly carriageway?: PolygonRegion;
   private readonly boundary: Boundary = { x: 0, z: 0, distance: Infinity };
   constructor(scenario: Scenario) {
     if (!scenario.urbanMap) throw new Error('Urban geometry requires a map.');
     this.walkable = new PolygonRegion(scenario.urbanMap.walkable);
     this.sidewalks = new PolygonRegion(scenario.urbanMap.sidewalks);
+    if (scenario.urbanMap.roads.length) this.carriageway = new PolygonRegion(scenario.urbanMap.roads);
+    if (scenario.urbanMap.crossingManeuvers?.length) this.maneuvers = new PolygonRegion(scenario.urbanMap.crossingManeuvers);
   }
   isSidewalk(x: number, z: number, radius = 0): boolean { return this.sidewalks.contains(x, z, radius); }
+  /** Includes the passing margins and landings of the signal-controlled crossings. */
+  inCrossingArea(x: number, z: number): boolean { return (this.maneuvers ?? this.walkable).contains(x, z); }
+  /** A doorway near a landing may be off the sidewalk without entering the carriageway. */
+  occupiesCrossing(x: number, z: number, radius: number): boolean {
+    if (!this.inCrossingArea(x, z) || this.isSidewalk(x, z, radius)) return false;
+    return !this.carriageway || this.carriageway.contains(x, z) || this.carriageway.nearest(x, z, radius, this.boundary);
+  }
   isWalkable(x: number, z: number, radius = 0): boolean { return this.walkable.contains(x, z, radius); }
   lineWalkable(x: number, z: number, tx: number, tz: number, radius = 0): boolean { return this.walkable.lineInside(x, z, tx, tz, radius); }
-  brakeAtCurb(x: number, z: number, direction: Direction, radius: number): boolean {
+  crossingLine(x: number, z: number, tx: number, tz: number, radius = 0): boolean {
+    return this.lineWalkable(x, z, tx, tz, radius) || !!this.maneuvers?.lineInside(x, z, tx, tz, radius);
+  }
+  canPassOnCrossing(x: number, z: number, radius: number): boolean {
+    return !!this.maneuvers?.contains(x, z, radius) && !this.isSidewalk(x, z, radius);
+  }
+  brakeAtCurb(x: number, z: number, direction: Direction, radius: number, makeSpace = false): boolean {
     if (!this.sidewalks.curb(x, z, direction.x, direction.z, radius, this.walkable, this.boundary)) return false;
     const inward = direction.x * this.boundary.x + direction.z * this.boundary.z;
+    // A waiting queue takes a step back so arrivals have room to leave the road.
+    if (makeSpace && this.boundary.distance < 2.1) {
+      const backward = Math.min(1.15, 2.1 - this.boundary.distance) - inward;
+      direction.x += this.boundary.x * backward; direction.z += this.boundary.z * backward;
+      return true;
+    }
     const brake = 1 - Math.min(1, this.boundary.distance / 2.2);
     direction.x -= this.boundary.x * inward * brake;
     direction.z -= this.boundary.z * inward * brake;
     return true;
   }
-  constrain(x: number, z: number, tx: number, tz: number, radius: number, sidewalkOnly: boolean, result: Direction): void {
-    const region = sidewalkOnly ? this.sidewalks : this.walkable;
+  constrain(x: number, z: number, tx: number, tz: number, radius: number, sidewalkOnly: boolean, result: Direction,
+    allowCrossingMargin = false): void {
+    const region = sidewalkOnly ? this.sidewalks : allowCrossingMargin && this.maneuvers ? this.maneuvers : this.walkable;
     region.constrain(x, z, tx, tz, radius, result);
     let qx = Math.fround(result.x), qz = Math.fround(result.z);
     if (region.contains(qx, qz, radius)) { result.x = qx; result.z = qz; return; }
@@ -244,12 +268,28 @@ export class UrbanGeometry {
     // A tight concave corner may leave no representable safe step.
     result.x = x; result.z = z;
   }
-  avoidance(x: number, z: number, radius: number, result: Point2): void {
+  avoidance(x: number, z: number, radius: number, result: Point2, passing = false, sidewalkOnly = false,
+    clearing = false): boolean {
     result.x = result.z = 0;
     const safe = radius + 0.75;
-    if (this.walkable.nearest(x, z, safe, this.boundary)) {
-      const weight = (safe - this.boundary.distance) * 1.8;
-      result.x = this.boundary.x * weight; result.z = this.boundary.z * weight;
+    if (!this.walkable.nearest(x, z, safe, this.boundary)) return false;
+    const motionRadius = radius + 0.015;
+    if (!sidewalkOnly && this.maneuvers && this.canPassOnCrossing(x, z, motionRadius) &&
+      (passing || !this.isWalkable(x, z, motionRadius))) {
+      // After the encounter ends, turn toward the painted surface. A red-signal
+      // evacuation already has a specific, reachable target on the nearest bank.
+      if (!passing && !clearing) {
+        const inward = this.isWalkable(x, z) ? 1 : -1;
+        result.x = this.boundary.x * inward; result.z = this.boundary.z * inward;
+      }
+      if (this.maneuvers.nearest(x, z, safe, this.boundary)) {
+        const weight = (safe - this.boundary.distance) * 1.8;
+        result.x += this.boundary.x * weight; result.z += this.boundary.z * weight;
+      }
+      return true;
     }
+    const weight = (safe - this.boundary.distance) * 1.8;
+    result.x = this.boundary.x * weight; result.z = this.boundary.z * weight;
+    return false;
   }
 }

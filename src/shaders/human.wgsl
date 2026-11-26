@@ -1,3 +1,17 @@
+override hip: f32;
+override hipX: f32;
+override knee: f32;
+override ankle: f32;
+override shoulder: f32;
+override shoulderX: f32;
+override elbow: f32;
+override neck: f32;
+override walkStride: f32;
+override runExtraStride: f32;
+override leanAngle: f32;
+override bobHeight: f32;
+override runTilt: f32;
+
 struct Scene {
   viewProjection: mat4x4<f32>,
   camera: vec4<f32>,
@@ -52,57 +66,57 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
   let appearance = agent.style.w;
   let movement = smoothstep(0.02, 0.55, speed);
   let running = smoothstep(1.9, 3.2, speed);
-  let stride = (0.53 + running * 0.31) * movement;
+  let stride = (walkStride + running * runExtraStride) * movement;
   var p = input.position;
   var n = input.normal;
   let side = select(-1.0, 1.0, part == 4u || part == 6u || part == 8u || part == 10u || part == 12u);
   let cycle = sin(phase + select(0.0, 3.14159265, side > 0.0));
   if (part == 1u || part == 2u) {
-    let neck = vec3<f32>(0.0, 1.48, 0.0);
-    p = rotateY(p - neck, agent.extra.w) + neck;
+    let pivot = vec3<f32>(0.0, neck, 0.0);
+    p = rotateY(p - pivot, agent.extra.w) + pivot;
     n = rotateY(n, agent.extra.w);
   } else if (part >= 7u) {
-    let hip = vec3<f32>(side * 0.12, 0.91, 0.0);
-    let knee = vec3<f32>(side * 0.12, 0.49, 0.0);
+    let hipPivot = vec3<f32>(side * hipX, hip, 0.0);
+    let kneePivot = vec3<f32>(side * hipX, knee, 0.0);
     let upperAngle = cycle * stride;
     let lowerAngle = max(0.0, -cycle) * (1.2 + running * 0.8) * movement;
     if (part >= 11u) {
       // Counter-rotate the foot so the supporting sole stays approximately level.
-      let ankle = vec3<f32>(side * 0.12, 0.075, 0.0);
-      p = aroundX(p, ankle, -upperAngle - lowerAngle);
+      let anklePivot = vec3<f32>(side * hipX, ankle, 0.0);
+      p = aroundX(p, anklePivot, -upperAngle - lowerAngle);
       n = rotateX(n, -upperAngle - lowerAngle);
     }
     if (part >= 9u) {
-      p = aroundX(p, knee, lowerAngle);
+      p = aroundX(p, kneePivot, lowerAngle);
       n = rotateX(n, lowerAngle);
     }
-    p = aroundX(p, hip, upperAngle);
+    p = aroundX(p, hipPivot, upperAngle);
     n = rotateX(n, upperAngle);
   } else if (part >= 3u && part <= 6u) {
-    let shoulder = vec3<f32>(side * 0.29, 1.41, 0.0);
-    let elbow = vec3<f32>(side * 0.29, 1.09, 0.0);
+    let shoulderPivot = vec3<f32>(side * shoulderX, shoulder, 0.0);
+    let elbowPivot = vec3<f32>(side * shoulderX, elbow, 0.0);
     let armAngle = -cycle * stride * 0.76;
     let elbowAngle = -(0.10 + running * 0.8 + max(0.0, cycle) * 0.18) * movement;
     if (part >= 5u) {
-      p = aroundX(p, elbow, elbowAngle);
+      p = aroundX(p, elbowPivot, elbowAngle);
       n = rotateX(n, elbowAngle);
     }
-    p = aroundX(p, shoulder, armAngle);
+    p = aroundX(p, shoulderPivot, armAngle);
     n = rotateX(n, armAngle);
   }
   if (part < 7u && agent.tint.w != 0.0) {
     // A light contact rolls the upper body away from the other walker about the hips.
-    let angle = agent.tint.w * 0.21;
+    let angle = agent.tint.w * leanAngle;
     let c = cos(angle); let s = sin(angle);
-    let dy = p.y - 0.91;
-    p = vec3<f32>(c * p.x + s * dy, 0.91 - s * p.x + c * dy, p.z);
+    let dy = p.y - hip;
+    p = vec3<f32>(c * p.x + s * dy, hip - s * p.x + c * dy, p.z);
     n = vec3<f32>(c * n.x + s * n.y, -s * n.x + c * n.y, n.z);
   }
   // The straight supporting leg determines pelvis height; bent swing legs lift naturally.
   let supportAngle = abs(sin(phase)) * stride;
-  p.y -= 0.835 * (1.0 - cos(supportAngle));
-  p.y += abs(sin(phase * 2.0)) * 0.012 * movement;
-  p.z += (p.y - 0.8) * running * 0.09;
+  p.y -= (hip - ankle) * (1.0 - cos(supportAngle));
+  p.y += abs(sin(phase * 2.0)) * bobHeight * movement;
+  p.z += (p.y - hip) * running * runTilt;
   let width = 0.87 + fract(appearance * 0.618034) * 0.25;
   p.x *= width;
   p *= agent.style.x;

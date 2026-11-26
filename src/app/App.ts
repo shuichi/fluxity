@@ -232,7 +232,7 @@ export class App {
       this.stats.meanSpeed = message.meanSpeed;
       this.stats.congestion = message.congestion;
       this.stats.simulationTime = message.simulationTime;
-      this.controls.setSignal(message.signal);
+      this.controls.setSignal(message.signal, message.simulationTime);
       if (first) {
         this.controls.setStatus('WebGPU active', 'ready');
         if (this.benchmark) this.benchmark.startedAt = performance.now();
@@ -256,7 +256,9 @@ export class App {
         const alpha = this.timeline.alpha(now, this.config.simulationSpeed);
         if (person && !this.canFollow(person, alpha)) this.leavePersonView();
         const render = this.renderer.render(previous.data, current.data, current.message.count, alpha, {
-            quality: this.quality, debug: this.debug, signal: current.message.signal, followedId: this.followedPerson?.id,
+            quality: this.quality, debug: this.debug, signal: current.message.signal, simulationTime: current.message.simulationTime,
+            followedId: this.followedPerson?.id,
+            vehicles: { previous: previous.vehicles, current: current.vehicles },
           });
         this.canPickPerson = !this.followedPerson;
         Object.assign(this.stats, render, {

@@ -1,0 +1,51 @@
+{
+  "description": "Local east/south meters. Road markings and traffic paths reconstruct the five zebra crossings and adjoining approaches from the supplied overhead view, GSI orthophotos and PLATEAU carriageways. Northward striping ends at the next crossing; positions under vehicles and shadow are interpolated. The northwestern red pavement ends near the visible color change. West and east markings end before the next zebra and rail viaduct, respectively. Endpoints and widths are approximate.",
+  "sources": ["https://maps.gsi.go.jp/development/ichiran.html#seamlessphoto", "https://maps.gsi.go.jp/#18/35.6595/139.7005/&base=seamlessphoto", "https://www.mlit.go.jp/road/sign/kijyun/pdf/19741226kukakusenn.pdf"],
+  "lines": [
+    {"id": "dogenzaka-center", "kind": "center", "width": 0.2, "points": [[-85.87, -3.33], [-79.15, -4.79], [-72.56, -6.01], [-65.43, -6.92], [-59.38, -7.31], [-54.0, -7.28], [-48.61, -6.95], [-42.81, -6.25], [-37.13, -5.38], [-32.34, -4.46], [-29.53, -3.9]]},
+    {"id": "dogenzaka-inbound-divider", "kind": "divider", "width": 0.15, "points": [[-85.73, -6.86], [-78.83, -8.08], [-72.0, -9.3], [-64.94, -10.03], [-57.99, -10.11], [-50.45, -9.77], [-43.57, -9.13]], "dash": [4, 5]},
+    {"id": "dogenzaka-inbound-divider-approach", "kind": "divider", "width": 0.15, "points": [[-43.57, -9.13], [-37.41, -8.38], [-30.65, -6.96]]},
+    {"id": "dogenzaka-outbound-divider", "kind": "divider", "width": 0.15, "points": [[-85.46, -0.34], [-78.93, -1.68], [-72.28, -2.83], [-65.27, -3.81], [-58.09, -4.13], [-51.02, -3.85], [-43.54, -3.14], [-37.38, -2.15]], "dash": [4, 5]},
+    {"id": "oyama-center", "kind": "center", "width": 0.2, "points": [[26.93, 4.03], [30.58, 4.41], [36.92, 4.93], [43.68, 5.45], [51.82, 5.91]]},
+    {"id": "oyama-outbound-divider", "kind": "divider", "width": 0.15, "points": [[34.67, 1.62], [41.13, 2.14], [48.01, 2.48], [52.86, 2.69]]},
+    {"id": "oyama-inbound-divider", "kind": "divider", "width": 0.15, "points": [[29.9, 7.4], [35.23, 8.15], [40.73, 8.78]]},
+    {"id": "north-center", "kind": "center", "width": 0.2, "points": [[28.17, -92.12], [26.42, -84.24], [24.45, -75.45], [22.1, -64.89], [20.34, -56.23], [18.74, -48.99], [16.9, -41.28], [15.12, -33.69], [12.85, -24.36], [12.42, -22.63]]},
+    {"id": "north-southbound-divider", "kind": "divider", "width": 0.15, "points": [[31.37, -91.46], [29.6, -83.56], [27.63, -74.77], [25.3, -64.23], [23.57, -56.15], [21.91, -48.86], [20.07, -41.14], [18.05, -32.95], [16.09, -24.88]]},
+    {"id": "north-northbound-divider-approach", "kind": "divider", "width": 0.15, "points": [[24.57, -90.49], [23.02, -83.18], [21.09, -74.48], [18.87, -64.25], [17.26, -56.48], [16.43, -52.94]]},
+    {"id": "north-northbound-divider", "kind": "divider", "width": 0.15, "points": [[15.51, -49.13], [13.48, -40.76], [11.77, -33.41], [9.62, -24.2]], "dash": [4, 6]},
+    {"id": "north-west-bay-outline", "kind": "hatch", "width": 0.15, "points": [[12.48, -52.74], [15.17, -52.31], [14.06, -47.52], [12.48, -52.74]]},
+    {"id": "north-west-bay-band-1", "kind": "hatch", "width": 0.17, "points": [[13.31, -52.62], [14.74, -50.21]]},
+    {"id": "north-west-bay-band-2", "kind": "hatch", "width": 0.17, "points": [[13.07, -51.0], [14.31, -48.96]]},
+    {"id": "north-east-bay-outline", "kind": "hatch", "width": 0.15, "points": [[22.74, -47.05], [24.83, -46.56], [21.14, -40.36], [22.74, -47.05]]},
+    {"id": "north-east-bay-band-1", "kind": "hatch", "width": 0.18, "points": [[22.49, -45.8], [23.87, -46.27]]},
+    {"id": "north-east-bay-band-2", "kind": "hatch", "width": 0.18, "points": [[22.19, -44.72], [23.87, -45.73]]},
+    {"id": "north-east-bay-band-3", "kind": "hatch", "width": 0.18, "points": [[21.88, -43.59], [23.26, -44.54]]},
+    {"id": "north-east-bay-band-4", "kind": "hatch", "width": 0.18, "points": [[21.63, -42.39], [22.72, -43.34]]},
+    {"id": "north-island-chevron-outline", "kind": "hatch", "width": 0.18, "points": [[12.59, -11.44], [11.12, -5.1], [15.07, -4.54], [12.59, -11.44]]},
+    {"id": "north-island-chevron-upper", "kind": "hatch", "width": 0.36, "points": [[12.04, -8.69], [12.7, -9.52], [13.53, -8.38]]},
+    {"id": "north-island-chevron-lower", "kind": "hatch", "width": 0.45, "points": [[11.49, -6.35], [12.75, -7.72], [14.36, -5.8]]},
+    {"id": "north-island-chevron-base", "kind": "hatch", "width": 0.43, "points": [[12.26, -4.91], [12.74, -5.45], [13.33, -4.79]]},
+    {"id": "north-junction-guide-west", "kind": "guide", "width": 0.15, "points": [[9.49, -12.83], [7.91, -8.89], [6.27, -5.19]], "dash": [1.1, 1.1]},
+    {"id": "north-junction-guide-east", "kind": "guide", "width": 0.15, "points": [[12.24, -12.1], [10.78, -8.09], [9.02, -4.39]], "dash": [1.1, 1.1]},
+    {"id": "terminal-bay-chevron-upper", "kind": "hatch", "width": 0.2, "points": [[-10.6, 24.23], [-10.06, 23.09], [-9.46, 24.41]]},
+    {"id": "terminal-bay-chevron-lower", "kind": "hatch", "width": 0.2, "points": [[-11.03, 25.9], [-10.54, 24.76], [-9.89, 25.97]]},
+    {"id": "terminal-inbound-guide", "kind": "guide", "width": 0.15, "points": [[-25.92, 54.43], [-24.33, 47.97], [-21.93, 37.81], [-19.91, 30.04], [-18.39, 25.38], [-16.94, 22.69]], "dash": [1.6, 1.4]},
+    {"id": "terminal-outbound-guide", "kind": "guide", "width": 0.15, "points": [[0.11, 24.47], [-0.08, 26.32], [-0.57, 28.3]], "dash": [1.4, 1.2]}
+  ],
+  "surfaces": [
+    {"id": "dogenzaka-outer-lane", "kind": "red", "points": [[-35.34, -13.57], [-29.06, -12.64], [-30.83, -7.02], [-36.57, -8.31]]},
+    {"id": "dogenzaka-opposite-edge", "kind": "red", "points": [[-36.62, -0.71], [-31.35, 0.34], [-31.78, 2.13], [-37.1, 1.08]]},
+    {"id": "oyama-outer-lane", "kind": "red", "points": [[32.95, -1.44], [40.19, -0.8], [39.75, 2.13], [32.75, 1.55]]},
+    {"id": "oyama-inbound-edge", "kind": "red", "points": [[32.7, 10.29], [37.01, 10.74], [36.58, 13.01], [32.21, 12.56]]},
+    {"id": "north-west-verge", "kind": "red", "points": [[13.5, -56.83], [17.25, -55.96], [15.87, -49.25], [14.09, -42.08], [12.07, -34.13], [9.07, -22.47], [5.0, -23.39], [6.66, -30.15], [8.56, -38.16], [10.4, -46.17]]},
+    {"id": "north-east-verge", "kind": "red", "points": [[19.23, -40.49], [23.3, -39.69], [21.33, -31.5], [19.24, -21.51], [15.59, -22.01], [17.62, -31.88]]},
+    {"id": "terminal-nose", "kind": "island", "points": [[-15.36, 21.18], [-11.89, 21.72], [-6.63, 22.55], [0.19, 23.22], [0.42, 24.34], [0.06, 25.44], [-0.6, 26.19], [-1.68, 26.08], [-3.41, 24.75], [-6.4, 24.03], [-11.0, 23.4], [-12.86, 23.45], [-14.18, 24.01], [-16.4, 25.9], [-16.94, 26.2], [-17.06, 25.84], [-16.15, 23.69]]},
+    {"id": "terminal-platform", "kind": "apron", "points": [[-11.7, 28.17], [-7.87, 28.73], [-5.54, 29.4], [-4.0, 31.03], [-2.93, 32.89], [-2.46, 34.99], [-2.53, 37.02], [-3.5, 38.69], [-5.85, 41.07], [-8.2, 42.98], [-10.49, 45.42], [-12.48, 48.4], [-14.41, 51.56], [-16.35, 55.14], [-19.08, 61.17], [-24.71, 61.14], [-23.29, 54.8], [-21.08, 45.89], [-19.43, 39.2], [-18.27, 35.37], [-16.75, 31.73], [-14.64, 29.35], [-12.54, 28.23]]}
+  ],
+  "stopBars": [
+    {"lane": 0, "points": [[-31.52, -12.59], [-32.76, -4.22]]},
+    {"lane": 1, "points": [[32.37, 4.6], [31.61, 11.84]]},
+    {"lane": 2, "points": [[13.21, -25.44], [19.79, -23.85]]},
+    {"lane": 3, "points": [[-22.61, 20.86], [-17.54, 23.17]]}
+  ]
+}

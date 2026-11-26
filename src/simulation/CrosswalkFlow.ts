@@ -151,12 +151,14 @@ export class CrosswalkFlow {
         leavesSidewalkEarly = !sidewalk.lineInside(x, z, firstX, firstZ, radius);
       }
     }
-    if (leavesSidewalkEarly || !this.nav.lineOfSight(x, z, aimX, aimZ, radius)) {
+    // A walker displaced by a neighbor can steer straight back to their own
+    // track without admitting a new trip or sidewalk approach through the margin.
+    if (leavesSidewalkEarly || !this.nav.lineOfSight(x, z, aimX, aimZ, radius, !!activeCrossing)) {
       // Approaching from the side may require following the sidewalk up to the mouth first.
       ahead = sign > 0 ? track.start : track.end;
       if (sign * (ahead - along) < -2.6) return false;
       aimX = trackX + crossing.ux * ahead; aimZ = trackZ + crossing.uz * ahead;
-      if ((leavesSidewalkEarly && !sidewalk!.lineInside(x, z, aimX, aimZ, radius)) || !this.nav.lineOfSight(x, z, aimX, aimZ, radius)) return false;
+      if ((leavesSidewalkEarly && !sidewalk!.lineInside(x, z, aimX, aimZ, radius)) || !this.nav.lineOfSight(x, z, aimX, aimZ, radius, !!activeCrossing)) return false;
     }
     const distance = Math.hypot(aimX - x, aimZ - z);
     if (distance < 0.05) return false;

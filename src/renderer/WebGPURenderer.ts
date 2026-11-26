@@ -1,14 +1,21 @@
 import humanSource from '../shaders/human.wgsl?raw';
 import environmentSource from '../shaders/environment.wgsl?raw';
 import shadowSource from '../shaders/shadow.wgsl?raw';
+import vehicleSource from '../shaders/vehicle.wgsl?raw';
 import { MAX_AGENTS, SNAPSHOT_STRIDE } from '../types';
 import type { PedestrianPortal, Quality, RenderStats, Scenario, SignalState } from '../types';
 import { Camera, type PersonPose, STREET_NEAR_PLANE } from './Camera';
 import { doorwayBlocksEye } from './Doorways';
 import { createHumanMesh, HUMAN_VERTEX_STRIDE } from './HumanMesh';
+import { HUMAN_GAIT, HUMAN_JOINTS } from './HumanAnimation';
 import { createEnvironment, ENVIRONMENT_VERTEX_STRIDE } from './Environment';
-import { InstanceBuffer, INSTANCE_STRIDE, samplePersonPose } from './InstanceBuffer';
+import roadMarkings from '../../data/shibuya/road-markings.json';
+import { tileRoadMarkings } from './RoadMarkings';
+import { signalLampMask } from './TrafficLights';
+import { InstanceBuffer, INSTANCE_STRIDE, sampleEyePose } from './InstanceBuffer';
 import { LIGHTING } from './Lighting';
+import { createVehicleMesh } from './VehicleMesh';
+import { VehicleInstances, VEHICLE_INSTANCE_STRIDE } from './VehicleInstances';
 import { UrbanMeshLoader, mergeEnvironmentMeshes, untexturedCoordinates } from './UrbanMesh';
 import type { EnvironmentMeshData } from './UrbanMesh';
 import { createUrbanAppearance } from './UrbanAppearance';
@@ -34,6 +41,8 @@ export class WebGPURenderer {
   private readonly sceneGroup: GPUBindGroup;
   private readonly instanceGroup: GPUBindGroup;
   private readonly instances: InstanceBuffer;
+  private readonly vehicleInstances: VehicleInstances;
+  private readonly vehicleMesh: Mesh;
   private readonly followedPose: PersonPose = { x: 0, z: 0, heading: 0, headYaw: 0, scale: 1 };
   private doors: PedestrianPortal[] = [];
   private readonly uniforms = new Float32Array(32);
@@ -46,6 +55,7 @@ export class WebGPURenderer {
   private humanPipeline!: GPURenderPipeline;
   private environmentPipeline!: GPURenderPipeline;
   private shadowPipeline!: GPURenderPipeline;
+  private vehiclePipeline!: GPURenderPipeline;
   private readonly sceneLayout: GPUBindGroupLayout;
   private readonly instanceLayout: GPUBindGroupLayout;
   private readonly appearanceLayout: GPUBindGroupLayout;
@@ -102,6 +112,8 @@ export class WebGPURenderer {
     this.instances = new InstanceBuffer(device);
     this.instanceGroup = device.createBindGroup({ layout: this.instanceLayout, entries: [{ binding: 0, resource: { buffer: this.instances.buffer } }] });
     for (let i = 0; i < 3; i++) this.humans.push(this.uploadMesh(createHumanMesh(i), `Human LOD ${i}`));
+    this.vehicleInstances = new VehicleInstances(device);
+    this.vehicleMesh = this.uploadMesh(createVehicleMesh(), 'Passenger car');
   }
 
   static async create(canvas: HTMLCanvasElement, onFatal?: (message: string) => void,
@@ -144,8 +156,9 @@ export class WebGPURenderer {
   }
 
   private async createPipelines(): Promise<void> {
-    const [human, environment, shadow] = await Promise.all([
+    const [human, environment, shadow, vehicle] = await Promise.all([
       this.shader('human.wgsl', humanSource), this.shader('environment.wgsl', environmentSource), this.shader('shadow.wgsl', shadowSource),
+      this.shader('vehicle.wgsl', vehicleSource),
     ]);
     const humanoidLayout = this.device.createPipelineLayout({ bindGroupLayouts: [this.sceneLayout, this.instanceLayout] });
     const depthStencil: GPUDepthStencilState = { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' };
@@ -153,7 +166,7 @@ export class WebGPURenderer {
     const pipelines = await Promise.all([
       this.device.createRenderPipelineAsync({
         label: 'Articulated instanced humans', layout: humanoidLayout,
-        vertex: { module: human, entryPoint: 'vertexMain', buffers: [{ arrayStride: HUMAN_VERTEX_STRIDE, attributes: [
+        vertex: { module: human, entryPoint: 'vertexMain', constants: { ...HUMAN_JOINTS, ...HUMAN_GAIT }, buffers: [{ arrayStride: HUMAN_VERTEX_STRIDE, attributes: [
           { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32' },
         ] }] },
         fragment: { module: human, entryPoint: 'fragmentMain', targets: [{ format: this.format }, { format: 'r16uint' }] },
@@ -177,10 +190,24 @@ export class WebGPURenderer {
         primitive: { topology: 'triangle-list', cullMode: 'none' },
         depthStencil: { ...depthStencil, depthWriteEnabled: false, depthCompare: 'less-equal' },
       }),
+      this.device.createRenderPipelineAsync({
+        label: 'Instanced passenger cars', layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.sceneLayout] }),
+        vertex: { module: vehicle, entryPoint: 'vertexMain', buffers: [
+          { arrayStride: ENVIRONMENT_VERTEX_STRIDE, attributes: [
+            { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
+            { shaderLocation: 2, offset: 24, format: 'float32x4' },
+          ] },
+          { arrayStride: VEHICLE_INSTANCE_STRIDE, stepMode: 'instance', attributes: [
+            { shaderLocation: 3, offset: 0, format: 'float32x4' }, { shaderLocation: 4, offset: 16, format: 'float32x3' },
+          ] },
+        ] },
+        fragment: { module: vehicle, entryPoint: 'fragmentMain', targets: [{ format: this.format }, { format: 'r16uint', writeMask: 0 }] },
+        primitive: { topology: 'triangle-list', cullMode: 'back' }, depthStencil,
+      }),
     ]);
     const validation = await this.device.popErrorScope();
     if (validation) throw new Error(`GPU pipeline validation: ${validation.message}`);
-    [this.humanPipeline, this.environmentPipeline, this.shadowPipeline] = pipelines;
+    [this.humanPipeline, this.environmentPipeline, this.shadowPipeline, this.vehiclePipeline] = pipelines;
   }
 
   private uploadMesh(data: EnvironmentMeshData, label: string): Mesh {
@@ -241,7 +268,13 @@ export class WebGPURenderer {
     if (scenario.urbanMap) {
       return this.urbanMeshes.load(scenario.urbanMap).then(async (data) => {
         if (this.dead || request !== this.scenarioRequest) return;
-        const merged = mergeEnvironmentMeshes(data, createEnvironment(scenario));
+        let fixtures = createEnvironment(scenario);
+        if (scenario.roadMarkings === 'shibuya') {
+          const tiled = tileRoadMarkings(data, roadMarkings, scenario.vehicleLanes ?? []);
+          data = tiled.base;
+          fixtures = mergeEnvironmentMeshes(tiled.road, fixtures);
+        }
+        const merged = mergeEnvironmentMeshes(data, fixtures);
         if (!merged.appearance) { install(merged); return; }
         // Wait for every decode even after one fails, so no late ImageBitmap leaks.
         const decoded = await Promise.allSettled(merged.appearance.atlases.map(atlas => Promise.resolve().then(() => createImageBitmap(atlas, {
@@ -311,14 +344,15 @@ export class WebGPURenderer {
 
   canPlacePersonCamera(previous: Float32Array, current: Float32Array, id: number, alpha: number): boolean {
     if (!this.doors.length) return true;
-    samplePersonPose(this.followedPose, previous, current, id * SNAPSHOT_STRIDE, alpha);
+    sampleEyePose(this.followedPose, previous, current, id * SNAPSHOT_STRIDE, alpha);
     const aspect = this.width / Math.max(1, this.height);
     const nearRadius = STREET_NEAR_PLANE * Math.hypot(1, Math.tan(this.camera.fov / 2) * aspect);
     return !this.doors.some(door => doorwayBlocksEye(door, this.followedPose, nearRadius));
   }
 
   render(previous: Float32Array, current: Float32Array, count: number, alpha: number,
-    options: { quality: Quality; debug: boolean; signal?: SignalState; followedId?: number }): RenderStats {
+    options: { quality: Quality; debug: boolean; signal?: SignalState; simulationTime?: number; followedId?: number;
+      vehicles?: { previous: Float32Array; current: Float32Array } }): RenderStats {
     const start = performance.now();
     if (this.dead) return { visible: 0, lodCounts: [0,0,0], drawCalls: 0, triangles: 0, cpuMs: 0, resolution: 'GPU disconnected' };
     this.resize(options.quality);
@@ -328,16 +362,17 @@ export class WebGPURenderer {
     const t = Math.max(0, Math.min(1, alpha));
     let person: PersonPose | undefined;
     if (followedId !== undefined && followedId >= 0 && followedId < n) {
-      samplePersonPose(this.followedPose, from, current, followedId * SNAPSHOT_STRIDE, t);
+      sampleEyePose(this.followedPose, from, current, followedId * SNAPSHOT_STRIDE, t);
       person = this.followedPose;
     }
     this.camera.update(this.width / this.height, person);
     this.instances.update(from, current, n, t, this.camera, this.height, options.quality, followedId);
+    const carCount = options.vehicles ? this.vehicleInstances.update(options.vehicles.previous, options.vehicles.current, t) : 0;
     this.uniforms.set(this.camera.viewProjection, 0);
     this.uniforms.set(this.camera.position, 16); this.uniforms[19] = Number(this.photographicAppearance);
     this.uniforms.set(LIGHTING.direction, 20); this.uniforms[23] = LIGHTING.ambient;
     this.uniforms[24] = Number(options.debug);
-    this.uniforms[25] = Number(options.signal?.phase !== 'red');
+    this.uniforms[25] = signalLampMask(options.signal, options.simulationTime ?? 0);
     this.uniforms[26] = this.roadHalfWidth;
     this.uniforms[27] = LIGHTING.fogNear;
     this.uniforms[28] = LIGHTING.background.r; this.uniforms[29] = LIGHTING.background.g;
@@ -361,6 +396,14 @@ export class WebGPURenderer {
       pass.setVertexBuffer(1, this.environment.coordinates);
       pass.drawIndexed(this.environment.indexCount);
       drawCalls++; triangles += this.environment.indexCount / 3;
+    }
+    if (carCount > 0) {
+      pass.setPipeline(this.vehiclePipeline);
+      pass.setVertexBuffer(0, this.vehicleMesh.vertex);
+      pass.setVertexBuffer(1, this.vehicleInstances.buffer);
+      pass.setIndexBuffer(this.vehicleMesh.index, 'uint32');
+      pass.drawIndexed(this.vehicleMesh.indexCount, carCount);
+      drawCalls++; triangles += this.vehicleMesh.indexCount / 3 * carCount;
     }
     if (this.instances.visible > 0) {
       pass.setBindGroup(1, this.instanceGroup);
@@ -394,6 +437,9 @@ export class WebGPURenderer {
     this.camera.destroy(); this.instances.destroy(); this.sceneBuffer.destroy(); this.depth?.destroy();
     this.personIds?.destroy();
     this.releaseEnvironment();
+    this.vehicleInstances.buffer?.destroy();
+    this.vehicleMesh.vertex.destroy();
+    this.vehicleMesh.index.destroy();
     for (const mesh of this.humans) { mesh.vertex.destroy(); mesh.index.destroy(); }
     this.context.unconfigure(); this.device.destroy();
   }

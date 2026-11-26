@@ -1,5 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix';
 import { clamp } from '../math/geometry';
+import { HUMAN_EYE_HEIGHT } from './HumanAnimation';
 import type { Bounds, CameraView } from '../types';
 
 interface Drag {
@@ -19,6 +20,7 @@ export interface PersonPose {
   heading: number;
   headYaw: number;
   scale: number;
+  eyeHeight?: number;
 }
 
 export const STREET_NEAR_PLANE = 0.15;
@@ -136,7 +138,7 @@ export class Camera {
     this.firstPerson = person !== undefined;
     if (person) {
       this.drag = null;
-      vec3.set(this.position, person.x, 1.65 * person.scale, person.z);
+      vec3.set(this.position, person.x, (person.eyeHeight ?? HUMAN_EYE_HEIGHT) * person.scale, person.z);
       const gazeHeading = person.heading + person.headYaw;
       vec3.set(this.gaze, person.x + Math.sin(gazeHeading), this.position[1], person.z + Math.cos(gazeHeading));
       mat4.lookAt(this.view, this.position, this.gaze, [0, 1, 0]);

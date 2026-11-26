@@ -256,7 +256,7 @@ describe('portal deadlock recovery', () => {
   it('applies different walking intentions during the simulation step and releases the queue when disabled', () => {
     // Local avoidance cannot advance anyone. The desired velocities still show
     // which shoppers the simulation is asking to move and which should wait.
-    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 28, signalMode: 'green' }, {
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 28, signalMode: 'pedestrian' }, {
       compute(_id, _agents, _grid, _direction, _settings, out) { out.x = out.z = 0; },
     }, { ...shibuya, spawnTargets: shibuya.spawnZones.map(() => shop) });
     const a = sim.agents;

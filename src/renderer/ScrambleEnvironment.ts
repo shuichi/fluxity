@@ -1,10 +1,11 @@
-import { MeshBuilder, TAU } from '../math/geometry';
-import type { Point2, Scenario } from '../types';
+import { MeshBuilder } from '../math/geometry';
+import { VehiclePath } from '../simulation/VehiclePath';
+import type { Scenario } from '../types';
 import { addDoorways } from './Doorways';
+import { addTrafficLights } from './TrafficLights';
 
-// Alpha is a material ID, not opacity: 1 legacy paving, 2 road paint, 3 illuminated signage, 4 mapped paving,
-// -1 red pedestrian lamp, -2 green pedestrian lamp. The whole scene stays one draw.
-export const SCENE_MATERIAL = { paving: 1, paint: 2, sign: 3, mappedPaving: 4, redSignal: -1, greenSignal: -2 } as const;
+// The fourth vertex color component selects the material in the environment shader.
+export const SCENE_MATERIAL = { paving: 1, paint: 2, sign: 3, mappedPaving: 4 } as const;
 
 const GLYPHS: Record<string, readonly number[]> = {
   A: [14,17,17,31,17,17,17], B: [30,17,17,30,17,17,30], C: [14,17,16,16,16,17,14],
@@ -27,10 +28,16 @@ export function createScrambleEnvironment(scenario: Scenario) {
   const scramble = scenario.scramble;
   if (!scramble) throw new Error('A scramble environment requires shared road geometry.');
   const mesh = new MeshBuilder(10);
+  addTrafficLights(mesh, scenario);
+  // Calibrated stop bars tile the PLATEAU carriageway itself alongside other paint.
+  for (const lane of scenario.roadMarkings ? [] : scenario.vehicleLanes ?? []) {
+    // The front bumper stops at the near edge of this 0.4 m stripe on the asphalt (y=0).
+    const center = new VehiclePath(lane).sample((lane.entry ?? lane.stop) + 0.2);
+    horizontalMark(center.x, center.z, 0.2, 1.75, center.ux, center.uz);
+  }
   // PLATEAU buildings, surfaces and clipped zebra paint are already in the static asset.
   if (scenario.urbanMap) {
     addDoorways(mesh, scenario.portals);
-    for (const signal of scramble.signalPositions) addSignal(signal);
     return mesh.finish();
   }
   const { minX, maxX, minZ, maxZ } = scenario.bounds;
@@ -68,7 +75,7 @@ export function createScrambleEnvironment(scenario: Scenario) {
     }
   }
 
-  // Lane markings stop well before pedestrian crossings; vehicles are deliberately out of scope.
+  // Lane markings on the procedural map stop before pedestrian crossings.
   const outer = Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minZ), Math.abs(maxZ));
   for (const side of [-1, 1]) {
     for (let travel = road * 2.25; travel < outer - 3; travel += 8) {
@@ -124,7 +131,6 @@ export function createScrambleEnvironment(scenario: Scenario) {
       w * 0.70, 2.4, index % 2 ? 'TOKYO' : 'CITY LAB', [0.88,0.78,0.48,3], [0.15,0.24,0.25,3]);
   }
 
-  for (const signal of scramble.signalPositions) addSignal(signal);
   return mesh.finish();
 
   /** Upright quad, with a local horizontal coordinate that reads left-to-right from its front. */
@@ -151,52 +157,5 @@ export function createScrambleEnvironment(scenario: Scenario) {
           center[2] + right[2] * u + normal[2] * 0.13], normal, cell * 0.92, cell * 0.92, foreground);
       }
     }
-  }
-
-  function addSignal(position: Point2 & { direction?: Point2 }) {
-    const facing = position.direction ?? { x: -position.x, z: -position.z };
-    const distance = Math.hypot(facing.x, facing.z) || 1;
-    const inward: Vec3 = [facing.x / distance,0,facing.z / distance];
-    const right: Vec3 = [inward[2],0,-inward[0]];
-    const x = position.x, z = position.z;
-    mesh.prism(x, 1.9, z, 0.18, 3.8, 0.18, [0.25,0.29,0.28,0], 6);
-    mesh.prism(x, 0.08, z, 0.54, 0.16, 0.54, [0.41,0.44,0.40,0], 8);
-    // Opposing pedestrian heads are visible from either side of the corner.
-    for (const side of [-1, 1]) {
-      const normal: Vec3 = [inward[0] * side,0,inward[2] * side];
-      const head: Vec3 = [x + normal[0] * 0.30,3.35,z + normal[2] * 0.30];
-      panel(head, normal, 1.36, 2.25, [0.13,0.18,0.17,0]);
-      for (const [offset, material] of [[0.50,SCENE_MATERIAL.redSignal],[-0.50,SCENE_MATERIAL.greenSignal]]) {
-        const center: Vec3 = [head[0] + normal[0] * 0.035,head[1] + offset,head[2] + normal[2] * 0.035];
-        const points: number[][] = [];
-        const panelRight: Vec3 = [normal[2],0,-normal[0]];
-        for (let i = 0; i < 12; i++) {
-          const a = i / 12 * TAU;
-          points.push([center[0] + panelRight[0] * Math.cos(a) * 0.47,
-            center[1] + Math.sin(a) * 0.47,center[2] + panelRight[2] * Math.cos(a) * 0.47]);
-        }
-        mesh.face(points, normal, [0.065,0.095,0.085,0]);
-        // Lit standing/walking silhouettes, rather than a generic vehicle traffic light.
-        const iconColor = [1,1,1,material];
-        const icon = (u: number, v: number, w: number, h: number) => panel([
-          center[0] + panelRight[0] * u + normal[0] * 0.035, center[1] + v,
-          center[2] + panelRight[2] * u + normal[2] * 0.035,
-        ], normal, w, h, iconColor);
-        icon(0,0.24,0.15,0.16); icon(0,0.01,0.14,0.27);
-        if (material === SCENE_MATERIAL.redSignal) {
-          icon(-0.075,-0.23,0.065,0.24); icon(0.075,-0.23,0.065,0.24);
-          icon(-0.14,0.01,0.065,0.22); icon(0.14,0.01,0.065,0.22);
-        } else {
-          for (let step = 0; step < 4; step++) {
-            icon(-0.035 - step * 0.05,-0.11 - step * 0.06,0.085,0.095);
-            icon(0.035 + step * 0.05,-0.11 - step * 0.06,0.085,0.095);
-            icon(-0.10 - step * 0.04,0.08 - step * 0.045,0.075,0.085);
-            icon(0.10 + step * 0.04,0.01 + step * 0.045,0.075,0.085);
-          }
-        }
-      }
-    }
-    // Small horizontal crossbar makes the paired heads legible at a distance.
-    mesh.box(x + right[0] * 0.03, 4.52, z + right[2] * 0.03, 1.25, 0.10, 1.25, [0.25,0.29,0.28,0]);
   }
 }

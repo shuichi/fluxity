@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_CONFIG, SNAPSHOT_STRIDE } from '../types';
+import { DEFAULT_CONFIG, SNAPSHOT_STRIDE, VEHICLE_SNAPSHOT_STRIDE } from '../types';
 import type { SnapshotMessage, WorkerInput, WorkerOutput } from '../types';
 
 describe('worker transfer ownership and clock', () => {
@@ -18,7 +18,9 @@ describe('worker transfer ownership and clock', () => {
     const send = (data: WorkerInput): void => scope.onmessage({ data });
     send({ type: 'init', config: { ...DEFAULT_CONFIG, count: 10 }, generation: 1, paused: true });
     expect(received.length).toBe(1); expect(received[0].step).toBe(0);
-    expect(received[0].buffer.byteLength).toBe(10 * SNAPSHOT_STRIDE * 4);
+    expect(received[0].vehicleCapacity).toBeGreaterThan(0);
+    const frameBytes = (10 * SNAPSHOT_STRIDE + received[0].vehicleCapacity * VEHICLE_SNAPSHOT_STRIDE) * 4;
+    expect(received[0].buffer.byteLength).toBe(frameBytes);
     vi.advanceTimersByTime(200); expect(received.length).toBe(1);
     send({ type: 'pause', paused: false });
     vi.advanceTimersByTime(1000);
@@ -35,6 +37,6 @@ describe('worker transfer ownership and clock', () => {
     send({ type: 'recycle', buffer: oldBuffer, generation: 1 });
     vi.advanceTimersByTime(1000);
     expect(received.length).toBe(9); // Exactly four fresh-generation allocations.
-    expect(oldBuffer.byteLength).toBe(10 * SNAPSHOT_STRIDE * 4);
+    expect(oldBuffer.byteLength).toBe(frameBytes);
   });
 });

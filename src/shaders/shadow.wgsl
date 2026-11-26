@@ -13,8 +13,8 @@ struct VertexOutput {
   let positions = array<vec2<f32>, 6>(vec2<f32>(-1.0,-1.0),vec2<f32>(1.0,-1.0),vec2<f32>(-1.0,1.0),vec2<f32>(-1.0,1.0),vec2<f32>(1.0,-1.0),vec2<f32>(1.0,1.0));
   let uv = positions[vertex];
   let agent = agents[instance];
-  let offset = uv * vec2<f32>(0.48, 0.62) * agent.style.x;
-  let p = agent.positionHeading.xyz + vec3<f32>(offset.x + 0.10, 0.025, offset.y - 0.12);
+  let offset = (uv * vec2<f32>(0.34, 0.44) + vec2<f32>(0.07, -0.09)) * agent.style.x;
+  let p = agent.positionHeading.xyz + vec3<f32>(offset.x, 0.025, offset.y);
   var output: VertexOutput;
   output.position = scene.viewProjection * vec4<f32>(p, 1.0);
   output.uv = uv;

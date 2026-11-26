@@ -42,6 +42,7 @@ export class DoorwayClearance {
     const sx = read.x[id], sz = read.z[id], vx = x - sx, vz = z - sz;
     if (vx === 0 && vz === 0) return true;
     const radius = doorwayRadius(a.scale[id]);
+    const passageStep = sidewalkOnly === undefined || a.portalStage[id] !== 0 || !this.navigation.urban;
     // 5.4 m/s bounds a full-speed neighbor's displacement during this tick.
     const reach = radius + doorwayRadius(1.13) + Math.hypot(vx, vz) + 5.4 * dt + 0.001;
     const first = grid.cellAt(sx - reach, sz - reach), last = grid.cellAt(sx + reach, sz + reach);
@@ -56,11 +57,15 @@ export class DoorwayClearance {
           const dx = read.x[j] - sx, dz = read.z[j] - sz;
           const distance2 = dx * dx + dz * dz;
           if (distance2 > reach * reach || distance2 === 0) continue;
+          // Reserve shoulder room for a merge. Ordinary sidewalk walkers use
+          // their physical body radii while local steering handles extra space.
+          const merging = passageStep || a.portalStage[j] !== 0;
+          const separation = merging ? radius + doorwayRadius(a.scale[j]) : a.radius[id] + a.radius[j];
           const distance = Math.sqrt(distance2), nx = dx / distance, nz = dz / distance;
           // Earlier slots have reserved their actual motion. Later slots still occupy
           // their current positions and will in turn yield to this accepted step.
           const otherAway = j < id ? nx * (a.next.x[j] - read.x[j]) + nz * (a.next.z[j] - read.z[j]) : 0;
-          const gap = Math.max(0, distance - radius - doorwayRadius(a.scale[j]) - 0.0001);
+          const gap = Math.max(0, distance - separation - 0.0001);
           const available = Math.max(0, gap + otherAway);
           this.normalsX[count] = nx; this.normalsZ[count] = nz; this.gaps[count++] = available;
           const toward = nx * vx + nz * vz;

@@ -40,6 +40,12 @@ struct VertexOutput {
   let roadDistance = min(abs(input.world.x), abs(input.world.z));
   let scramble = scene.settings.z > 0.5;
   var emissive = 0.0;
+  if (material > 4.5 && material < 5.5) {
+    // World-locked aggregate. Fade subpixel grain before it can shimmer in an overview.
+    let cell = floor(input.world.xz * 18.0);
+    let grain = fract(sin(dot(cell, vec2<f32>(12.9898, 78.233))) * 43758.5453) - 0.5;
+    color *= 1.0 + 0.07 * grain * (1.0 - smoothstep(0.018, 0.055, max(antialias.x, antialias.y)));
+  }
   let mappedPaving = material > 3.5 && material < 4.5;
   if (((material > 0.5 && material < 1.5) || mappedPaving) && input.normal.y > 0.9) {
     let tile = abs(fract(input.world.xz / 3.0 - 0.5) - 0.5) * 3.0;
@@ -64,10 +70,9 @@ struct VertexOutput {
   if (material > 1.5 && material < 2.5 && scramble && roadDistance > scene.settings.z + 0.04) { discard; }
   if (material > 2.5 && material < 3.5) { emissive = 0.65; }
   if (material < -0.5) {
-    let greenLamp = material < -1.5;
-    let lampOn = greenLamp == (scene.settings.y > 0.5);
-    let lightColor = select(vec3<f32>(1.0,0.22,0.14), vec3<f32>(0.15,0.95,0.45), greenLamp);
-    color = select(vec3<f32>(0.10,0.15,0.13), lightColor, lampOn);
+    let bit = 1u << u32(round(-material) - 1.0);
+    let lampOn = (u32(scene.settings.y) & bit) != 0u;
+    color = select(vec3<f32>(0.075, 0.095, 0.085), input.color.rgb, lampOn);
     emissive = select(0.0,1.0,lampOn);
   }
   let diffuse = max(dot(normalize(input.normal), scene.sun.xyz), 0.0);

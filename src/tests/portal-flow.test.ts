@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, SNAPSHOT_STRIDE, type PedestrianPortal, type Scenario } from '../types';
+import { DEFAULT_CONFIG, FIXED_DT, SNAPSHOT_STRIDE, type PedestrianPortal, type Scenario } from '../types';
 import { Simulation } from '../simulation/Simulation';
 
 const gates: PedestrianPortal[] = [
@@ -70,6 +70,29 @@ describe('fixed-population trips', () => {
     expect(waited).toBe(true);
     expect([...a.generation]).toEqual([1, 1]);
     expect(sim.arrivals).toBe(2);
+  });
+
+  it('keeps a slow walker moving when the former leader returns behind them in a new generation', () => {
+    const portals: PedestrianPortal[] = [
+      { ...gates[0], kind: 'street', width: 1.6 },
+      { ...gates[1], end: { x: 15, z: 0 }, width: 1.6 },
+    ];
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, walkingSpeed: 2, seed: 42 }, undefined, fixture(portals));
+    const a = sim.agents;
+    for (let id = 0; id < 2; id++) {
+      a.current.x[id] = a.targetX[id] - 0.94 * id; a.current.z[id] = a.targetZ[id];
+      a.current.vx[id] = a.current.vz[id] = 0;
+    }
+    a.preferredSpeed[1] = 0.12;
+    // The fast walker cycles back to the same lane before the slow walker reaches its end.
+    let rejoinedBehind = false;
+    for (let step = 0; step < 80 / FIXED_DT && !a.generation[1]; step++) {
+      sim.step();
+      if (a.generation[0] > 0 && sim.isInPortalLane(0) && sim.isInPortalLane(1)
+        && a.current.x[0] >= portals[1].approach.x && a.current.x[0] < a.current.x[1]) rejoinedBehind = true;
+    }
+    expect(rejoinedBehind).toBe(true);
+    expect(a.generation[1]).toBe(1);
   });
 
   it('joins the public apron at the current depth when approaching from the side', () => {

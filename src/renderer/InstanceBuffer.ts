@@ -4,10 +4,13 @@ import type { Quality } from '../types';
 import type { Camera, PersonPose } from './Camera';
 import { Frustum } from './Culling';
 import { LODManager } from './LODManager';
+import { HUMAN_EYE_HEIGHT, HUMAN_GAIT, HUMAN_HEIGHT, HUMAN_JOINTS } from './HumanAnimation';
 
 /** Four vec4s: WGSL Instance is 64-byte aligned/strided. */
 export const INSTANCE_FLOATS = 16;
 export const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+// Include the extended shoe at full running stride near the edge of the frustum.
+const CULL_RADIUS = Math.hypot(HUMAN_HEIGHT / 2, HUMAN_JOINTS.hip);
 
 /** Sample the same pose for the visible mesh and the camera riding with it. */
 export function samplePersonPose(pose: PersonPose, from: Float32Array, to: Float32Array, offset: number, alpha: number): number {
@@ -21,6 +24,31 @@ export function samplePersonPose(pose: PersonPose, from: Float32Array, to: Float
   pose.headYaw = from[offset + 13] + (to[offset + 13] - from[offset + 13]) * t;
   pose.scale = to[offset + 6];
   return t;
+}
+
+function smoothstep(lo: number, hi: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+}
+
+/** Follow the eye landmark through the same hip roll, pelvis travel and forward tilt as the head. */
+export function sampleEyePose(pose: PersonPose, from: Float32Array, to: Float32Array, offset: number, alpha: number): void {
+  const t = samplePersonPose(pose, from, to, offset, alpha);
+  const sample = (field: number) => from[offset + field] + (to[offset + field] - from[offset + field]) * t;
+  const speed = sample(3), phase = sample(4);
+  const moving = smoothstep(0.02, 0.55, speed), running = smoothstep(1.9, 3.2, speed);
+  const stride = (HUMAN_GAIT.walkStride + HUMAN_GAIT.runExtraStride * running) * moving;
+  const roll = sample(14) * HUMAN_GAIT.leanAngle;
+  const rise = HUMAN_EYE_HEIGHT - HUMAN_JOINTS.hip;
+  const drop = (HUMAN_JOINTS.hip - HUMAN_JOINTS.ankle) * (1 - Math.cos(Math.sin(phase) * stride));
+  pose.eyeHeight = HUMAN_JOINTS.hip + Math.cos(roll) * rise - drop
+    + Math.abs(Math.sin(2 * phase)) * HUMAN_GAIT.bobHeight * moving;
+  const breadth = Math.fround(to[offset + 5] * Math.fround(0.618034));
+  const width = 0.87 + (breadth - Math.floor(breadth)) * 0.25;
+  const side = Math.sin(roll) * rise * width * pose.scale;
+  const forward = (pose.eyeHeight - HUMAN_JOINTS.hip) * running * HUMAN_GAIT.runTilt * pose.scale;
+  pose.x += Math.cos(pose.heading) * side + Math.sin(pose.heading) * forward;
+  pose.z += -Math.sin(pose.heading) * side + Math.cos(pose.heading) * forward;
 }
 
 export class InstanceBuffer {
@@ -59,9 +87,10 @@ export class InstanceBuffer {
       const opacity = from[s + 12] + (current[s + 12] - from[s + 12]) * t;
       if (opacity <= 0) continue;
       const { x, z, scale, heading } = this.pose;
-      if (!this.frustum.containsSphere(x, 0.94 * scale, z, 1.12 * scale)) continue;
-      const depth = -(view[2] * x + view[6] * scale + view[10] * z + view[14]);
-      const projectedHeight = 1.85 * scale * focalLength / Math.max(0.2, depth);
+      const height = HUMAN_HEIGHT * scale;
+      if (!this.frustum.containsSphere(x, height / 2, z, CULL_RADIUS * scale)) continue;
+      const depth = -(view[2] * x + view[6] * height / 2 + view[10] * z + view[14]);
+      const projectedHeight = height * focalLength / Math.max(0.2, depth);
       const lod = this.lod.select(id, projectedHeight, quality);
       this.ids[this.visible++] = id;
       this.visibleLives[id] = current[s + 11];

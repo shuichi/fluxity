@@ -1,10 +1,19 @@
+import type { VehicleLane } from './simulation/VehicleLanes';
+
 /** Shared data-only boundary: Simulation has no dependency on DOM or WebGPU. */
 export type ScenarioId = 'shibuya' | 'plaza' | 'corridor' | 'bottleneck' | 'crossing';
-export type SignalMode = 'auto' | 'green' | 'red';
+export type TrafficAxis = 'eastWest' | 'northSouth';
+export type SignalService = 'pedestrian' | TrafficAxis;
+export type PedestrianSignal = 'red' | 'green' | 'flashingGreen';
+export type VehicleSignal = 'red' | 'yellow' | 'green';
+export type SignalMode = 'auto' | SignalService | 'allRed';
 export interface SignalState {
+  /** Operator request. The lamps below can still be clearing the previous movement. */
   mode: SignalMode;
-  phase: 'green' | 'red';
-  /** Simulation seconds until the next automatic phase, null for manual control. */
+  pedestrian: PedestrianSignal;
+  eastWest: VehicleSignal;
+  northSouth: VehicleSignal;
+  /** Simulation seconds until the next indication, null during a hold. */
   remaining: number | null;
   waiting: number;
   crossing: number;
@@ -41,6 +50,8 @@ export interface UrbanMap {
   /** Unioned surfaces, with building footprints and traffic islands removed. */
   sidewalks: Polygon2[];
   walkable: Polygon2[];
+  /** Crossing and apron surface including limited lateral passing room on the carriageway. */
+  crossingManeuvers?: Polygon2[];
   roads: Polygon2[];
   buildingFootprints: Polygon2[];
   mesh: {
@@ -81,6 +92,9 @@ export interface Scenario {
   targetSpread?: number;
   navigationCellSize?: number;
   urbanMap?: UrbanMap;
+  /** Calibrated surface markings for the renderer, in the local coordinates of the urban map. */
+  roadMarkings?: 'shibuya';
+  vehicleLanes?: readonly VehicleLane[];
   /** Shared geometry for navigation, stop lines, zebra markings and signal fixtures. */
   scramble?: {
     roadHalfWidth: number;
@@ -105,6 +119,13 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 };
 /** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity,headYaw,contactLean. */
 export const SNAPSHOT_STRIDE = 15;
+/** A fixed vehicle slot holds x, z, heading (+Z forwards), life (0 when unused), and speed. */
+export const VEHICLE_SNAPSHOT_STRIDE = 5;
+/** Toyota Corolla Sport G (2026), meters. The safety envelope includes the open door mirrors. */
+export const VEHICLE_LENGTH = 4.375;
+export const VEHICLE_BODY_WIDTH = 1.790;
+export const VEHICLE_WIDTH = 2.080;
+export const VEHICLE_HEIGHT = 1.460;
 export const FIXED_DT = 1 / 30;
 export const MAX_AGENTS = 20000;
 export interface SnapshotMessage {
@@ -112,6 +133,8 @@ export interface SnapshotMessage {
   generation: number;
   buffer: ArrayBuffer;
   count: number;
+  /** Vehicle slots following the pedestrian records in the same transferable buffer. */
+  vehicleCapacity: number;
   step: number;
   simulationTime: number;
   stepMs: number;

@@ -24,12 +24,15 @@ export interface CrossingPriority {
 export interface LocalAvoidance {
   /** The most recent compute call chose to clear space for a walker leaving the road. */
   readonly yieldingAtCurb?: boolean;
+  /** This pedestrian is passing someone at a zebra edge or returning from its margin. */
+  readonly allowCrossingMargin?: boolean;
   compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale?: number, sidewalkOnly?: boolean): void;
 }
 
 export class Steering implements LocalAvoidance {
   candidateChecks = 0;
   yieldingAtCurb = false;
+  allowCrossingMargin = false;
   private readonly wallPush = { x: 0, z: 0 };
   constructor(private readonly scenario: Scenario, private readonly urban?: UrbanGeometry,
     private readonly doorwayCells?: Uint8Array, private readonly encounters?: EncounterState,
@@ -75,7 +78,7 @@ export class Steering implements LocalAvoidance {
       for (let option = 1; option < 4; option++) if (this.costs[option] < this.costs[best]) best = option;
       const step = speed * 0.65, side = SIDE_SPEED[best], forward = FORWARD_SPEED[best];
       const tx = x + (dirX * forward + dirZ * side) * step, tz = z + (dirZ * forward - dirX * side) * step;
-      if (!this.navigation || this.canStep(x, z, tx, tz, agents.radius[id] + 0.015, sidewalkOnly)) {
+      if (!this.navigation || this.canStep(x, z, tx, tz, agents.radius[id] + 0.015, sidewalkOnly, side !== 0)) {
         chosen = best; break;
       }
       this.costs[best] = Infinity;
@@ -85,12 +88,13 @@ export class Steering implements LocalAvoidance {
     e.reconsiderIn[id] = 0.42 + (horizon - 1.4) * 0.45;
   }
 
-  private canStep(x: number, z: number, tx: number, tz: number, radius: number, sidewalkOnly: boolean): boolean {
+  private canStep(x: number, z: number, tx: number, tz: number, radius: number, sidewalkOnly: boolean, passing: boolean): boolean {
     const b = this.scenario.bounds;
     if (tx < b.minX + radius || tx > b.maxX - radius || tz < b.minZ + radius || tz > b.maxZ - radius) return false;
     if (this.urban) {
-      const surface = sidewalkOnly ? this.urban.sidewalks : this.urban.walkable;
-      return surface.lineInside(x, z, tx, tz, radius);
+      if (sidewalkOnly) return this.urban.sidewalks.lineInside(x, z, tx, tz, radius);
+      if (passing && this.urban.canPassOnCrossing(x, z, radius)) return this.urban.crossingLine(x, z, tx, tz, radius);
+      return this.urban.lineWalkable(x, z, tx, tz, radius);
     }
     const nav = this.navigation!;
     return (!sidewalkOnly || !nav.scramble || nav.scramble.isSidewalk(tx, tz, radius))
@@ -99,6 +103,7 @@ export class Steering implements LocalAvoidance {
 
   compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale = 1, sidewalkOnly = false): void {
     this.yieldingAtCurb = false;
+    this.allowCrossingMargin = false;
     const state = agents.current;
     const x = state.x[id], z = state.z[id], dirX = direction.x, dirZ = direction.z;
     const preferredSpeed = agents.preferredSpeed[id] * speedScale;
@@ -258,7 +263,9 @@ export class Steering implements LocalAvoidance {
       desiredX += dirZ * 0.3; desiredZ -= dirX * 0.3;
     }
     if (this.urban) {
-      this.urban.avoidance(x, z, agents.radius[id], this.wallPush);
+      const passing = avoidance > 0 && (Math.abs(lateral) > 0.01 || Math.abs(pushX * dirZ - pushZ * dirX) > 0.04);
+      this.allowCrossingMargin = this.urban.avoidance(x, z, agents.radius[id], this.wallPush, passing,
+        sidewalkOnly, !!this.crossing?.clearing[id]);
       desiredX += this.wallPush.x; desiredZ += this.wallPush.z;
     }
     for (const obstacle of this.scenario.obstacles) {
