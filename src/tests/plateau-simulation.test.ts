@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../types';
-import { shibuya } from '../scenarios/shibuya';
+import { legacyShibuya, shibuya } from '../scenarios/shibuya';
 import { Navigation } from '../simulation/Navigation';
 import { Simulation } from '../simulation/Simulation';
 import { Steering } from '../simulation/Steering';
@@ -65,8 +65,8 @@ describe('PLATEAU Shibuya pedestrian map', () => {
   }, 10000);
 
   it('keeps all five storefront queues moving after the first crowd reaches them', () => {
-    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 300, walkingSpeed: 2.6, signalMode: 'green', seed: 42 });
-    const a = sim.agents, portals = shibuya.portals!;
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 300, walkingSpeed: 2.6, signalMode: 'green', seed: 42 }, undefined, legacyShibuya);
+    const a = sim.agents, portals = sim.scenario.portals!;
     for (let step = 0; step < 1800; step++) sim.step();
     const visited = new Set<string>();
     const generation = a.generation.slice(), previousTarget = a.targetId.slice();

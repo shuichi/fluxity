@@ -6,10 +6,11 @@ import { AgentData } from './AgentData';
 import { Navigation } from './Navigation';
 import { SpatialGrid } from './SpatialGrid';
 import { PortalFlow } from './PortalFlow';
+import { PortalTripDemand } from './PortalTripDemand';
 import { DoorwayClearance, doorwayRadius } from './DoorwayClearance';
 import { DoorwayCourtesy } from './DoorwayCourtesy';
 import { DoorwayHeadway } from './DoorwayHeadway';
-import { ShopDeadlockRecovery } from './ShopDeadlockRecovery';
+import { PortalDeadlockRecovery } from './PortalDeadlockRecovery';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
 import { TrafficSignal } from './TrafficSignal';
@@ -45,11 +46,13 @@ export class Simulation {
   private readonly crossings?: CrossingClearance;
   private readonly crosswalkFlow?: CrosswalkFlow;
   private readonly portals: PortalFlow | undefined;
+  private readonly tripDemand?: PortalTripDemand;
   private readonly doorways?: DoorwayClearance;
   private readonly courtesy?: DoorwayCourtesy;
   private readonly headway?: DoorwayHeadway;
-  private shopRecovery?: ShopDeadlockRecovery;
-  private shopRecoveryEnabled = true;
+  private readonly recoveryByTarget: (PortalDeadlockRecovery | undefined)[] = [];
+  private recoveryEnabled = true;
+  private recoveryPortalId?: string;
   stepCount = 0;
   time = 0;
   arrivals = 0;
@@ -58,11 +61,15 @@ export class Simulation {
   private readonly projected = { x: 0, z: 0 };
 
   get signal(): SignalState | undefined { return this.traffic?.state; }
-  get shopDeadlockActive(): boolean { return this.shopRecovery?.active ?? false; }
+  isPortalDeadlockActive(target: number): boolean { return this.recoveryByTarget[target]?.active ?? false; }
+  completedPortalTrips(target: number): number { return this.portals?.completedTrips[target] ?? 0; }
+  /** @deprecated Use isPortalDeadlockActive to inspect a specific destination. */
+  get shopDeadlockActive(): boolean { return this.recoveryByTarget.some(recovery => recovery?.active); }
 
   constructor(config: SimulationConfig, avoidance?: LocalAvoidance, scenario?: Scenario) {
     const count = Math.floor(finite(config.count, DEFAULT_CONFIG.count, 1, MAX_AGENTS));
     this.agents = new AgentData(count); this.scenario = scenario ?? getScenario(config.scenario);
+    this.recoveryEnabled = this.scenario.portalRecoveryByDefault ?? true;
     this.random = new Random(config.seed); this.navigation = new Navigation(this.scenario);
     this.grid = new SpatialGrid(this.scenario.bounds, count);
     this.attention = new PedestrianAttention(config.seed, this.agents, this.navigation, this.grid);
@@ -71,17 +78,19 @@ export class Simulation {
     this.traffic = this.navigation.scramble ? new TrafficSignal() : undefined;
     if (this.traffic) this.crossings = new CrossingClearance(this.navigation, this.grid, count);
     if (this.scenario.scramble?.crosswalks.length) this.crosswalkFlow = new CrosswalkFlow(this.navigation, count, config.seed);
-    this.updateSettings(config);
     if (this.scenario.portals) {
       const doors = this.scenario.portals.filter(portal => portal.kind === 'door');
       if (doors.length) this.doorways = new DoorwayClearance(doors, this.grid, this.agents, this.navigation);
-      this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways);
+      if (this.scenario.portalTripMix && !this.scenario.targetTransitions) {
+        this.tripDemand = new PortalTripDemand(this.scenario.portals, this.scenario.portalTripMix, config.seed);
+      }
+      this.portals = new PortalFlow(this.scenario.portals, this.navigation, this.agents, this.random, this.doorways, this.tripDemand);
       if (this.navigation.urban) {
         this.courtesy = new DoorwayCourtesy(this.agents, this.navigation, this.grid, this.scenario.portals);
         this.headway = new DoorwayHeadway(this.agents, this.grid, this.navigation, this.scenario.portals);
-        this.setShopDeadlockRecovery(true);
       }
     }
+    this.updateSettings(config);
     this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells, this.encounters, this.navigation, this.crossings);
     this.initialize();
   }
@@ -94,18 +103,33 @@ export class Simulation {
       this.traffic?.setMode(this.settings.signalMode, this.time);
     }
     for (let i = 0; i < this.agents.count; i++) this.agents.preferredSpeed[i] = this.agents.speedFactor[i] * this.settings.walkingSpeed;
-    if (settings.walkingSpeed !== undefined || settings.avoidanceStrength !== undefined) this.setShopDeadlockRecovery(this.shopRecoveryEnabled);
+    if (settings.walkingSpeed !== undefined || settings.avoidanceStrength !== undefined) this.configurePortalRecovery();
   }
 
-  setShopDeadlockRecovery(enabled: boolean): void {
-    this.shopRecoveryEnabled = enabled;
-    if (!enabled || this.settings.walkingSpeed === 0 || this.settings.avoidanceStrength === 0) {
-      this.shopRecovery = undefined;
+  /** Omitting the portal ID enables recovery at every authored trip destination. */
+  setPortalDeadlockRecovery(enabled: boolean, onlyPortalId?: string): void {
+    this.recoveryEnabled = enabled;
+    this.recoveryPortalId = onlyPortalId;
+    this.configurePortalRecovery();
+  }
+
+  /** @deprecated Use setPortalDeadlockRecovery to select all portals or a single one. */
+  setShopDeadlockRecovery(enabled: boolean): void { this.setPortalDeadlockRecovery(enabled); }
+
+  private configurePortalRecovery(): void {
+    const portals = this.scenario.portals;
+    if (!this.recoveryEnabled || !this.portals || !portals || !this.navigation.urban || this.scenario.id !== 'shibuya'
+      || this.settings.walkingSpeed === 0 || this.settings.avoidanceStrength === 0) {
+      this.recoveryByTarget.length = 0;
       return;
     }
-    if (this.shopRecovery || !this.portals || !this.navigation.urban || this.scenario.id !== 'shibuya') return;
-    const target = this.scenario.portals!.findIndex(p => p.kind === 'door' && p.id === 'northwest-shop');
-    if (target >= 0) this.shopRecovery = new ShopDeadlockRecovery(this.agents, this.navigation, target, this.portals.shopMouths(target));
+    for (let target = 0; target < portals.length; target++) {
+      if (this.recoveryPortalId === undefined || portals[target].id === this.recoveryPortalId) {
+        this.recoveryByTarget[target] ??= new PortalDeadlockRecovery(this.agents, this.navigation, target, this.portals, this.grid);
+      } else {
+        this.recoveryByTarget[target] = undefined;
+      }
+    }
   }
   private readonly newPerson = (i: number): void => {
     const a = this.agents;
@@ -122,7 +146,9 @@ export class Simulation {
     const next = new Int32Array(a.count); next.fill(-1);
     // If rejection sampling runs out of space, distribute overflow on the open
     // sidewalk. A doorway must start with enough room for the first person to pass.
-    const doorways = this.doorways;
+    const doorways = this.scenario.initialDoorways
+      ? new DoorwayClearance(this.scenario.initialDoorways, this.grid, a, this.navigation)
+      : this.doorways;
     const openCells = doorways ? this.navigation.spawnCells.filter(cell => {
       const x = b.minX + (cell % this.navigation.columns + 0.5) * this.navigation.cellSize;
       const z = b.minZ + (Math.floor(cell / this.navigation.columns) + 0.5) * this.navigation.cellSize;
@@ -173,7 +199,7 @@ export class Simulation {
       state.x[i] = x; state.z[i] = z; next[i] = heads[cell]; heads[cell] = i;
       const routes = this.scenario.spawnTargets?.[zoneIndex];
       const selected = Array.isArray(routes) ? routes[this.random.int(routes.length)] : routes;
-      const target = selected ?? this.random.int(this.scenario.targets.length);
+      const target = selected ?? this.tripDemand?.target(i, 0, x, z) ?? this.random.int(this.scenario.targets.length);
       this.assignTarget(i, target);
       this.navigation.direction(x, z, a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, a.radius[i] + 0.015);
       state.heading[i] = Math.atan2(this.direction.x, this.direction.z);
@@ -251,8 +277,9 @@ export class Simulation {
     const headway = socialAvoidance ? this.headway : undefined;
     if (this.portals) this.portals.yieldForEmergence = socialAvoidance;
     courtesy?.update(this.time);
-    const recovery = this.shopRecovery;
-    if (recovery) recovery.update(this.time, this.portals!.completedTrips[recovery.targetIndex]);
+    for (const recovery of this.recoveryByTarget) {
+      if (recovery) recovery.update(this.time, this.completedPortalTrips(recovery.targetIndex));
+    }
     if (this.avoidance instanceof Steering) this.avoidance.candidateChecks = 0;
     let totalSpeed = 0, stopped = 0, waiting = 0, crossing = 0;
     const b = this.scenario.bounds;
@@ -262,6 +289,7 @@ export class Simulation {
       const radius = a.radius[i] + 0.015;
       const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
       const clearance = this.crossings && (this.crossings.clearing[i] || (red && !sidewalkOnly)) ? this.crossings : undefined;
+      const recovery = this.recoveryByTarget[a.targetId[i]];
       const order = clearance ? undefined : recovery?.order(i);
       const passageAllowed = !order || order === 'pass';
       const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];

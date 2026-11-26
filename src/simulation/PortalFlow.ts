@@ -3,6 +3,7 @@ import type { Random } from '../math/random';
 import type { AgentData } from './AgentData';
 import type { Navigation } from './Navigation';
 import type { SpatialGrid } from './SpatialGrid';
+import type { PortalTripDemand } from './PortalTripDemand';
 import { doorwayRadius, type DoorwayClearance } from './DoorwayClearance';
 import { canSeeWalker } from './PedestrianVisibility';
 
@@ -60,7 +61,8 @@ export class PortalFlow {
   transferCount = 0;
 
   constructor(private readonly portals: PedestrianPortal[], private readonly nav: Navigation,
-    private readonly agents: AgentData, private readonly random: Random, private readonly doorways?: DoorwayClearance) {
+    private readonly agents: AgentData, private readonly random: Random, private readonly doorways?: DoorwayClearance,
+    private readonly demand?: PortalTripDemand) {
     if (portals.length < 2 || portals.length !== nav.scenario.targets.length) {
       throw new Error('Portal scenarios require a passage for each destination and at least two passages.');
     }
@@ -166,6 +168,7 @@ export class PortalFlow {
   guideSidewalk(id: number, direction: Point2): void {
     if (!this.nav.urban) return;
     const a = this.agents, x = a.current.x[id], z = a.current.z[id];
+    const destination = this.destination[id];
     for (const gate of this.gates) {
       const lane = gate.exits[0], portal = this.portals[lane.portal];
       if (portal.kind !== 'door' || gate.exits.length < 2) continue;
@@ -173,7 +176,7 @@ export class PortalFlow {
       if (Math.abs(ex) > 12 || Math.abs(ez) > 12) continue;
       const ux = (lane.endX - lane.x) / lane.length, uz = (lane.endZ - lane.z) / lane.length;
       const depth = -(ex * ux + ez * uz), tangent = ex * uz - ez * ux;
-      if (lane.portal === this.destination[id].portal || Math.abs(tangent) > portal.width / 2 + 7
+      if (lane.portal === destination.portal || Math.abs(tangent) > portal.width / 2 + 7
         || depth < 0 || depth > 6.1) continue;
       const outward = Math.max(-0.2, Math.min(1.3, (5.6 - depth) * 0.65));
       const side = Math.sign(direction.x * uz - direction.z * ux);
@@ -181,7 +184,13 @@ export class PortalFlow {
       const length = Math.hypot(dx, dz);
       if (length < 0.1) continue;
       const vx = dx / length, vz = dz / length;
-      if (!this.nav.isSpawnable(x + vx * 0.8, z + vz * 0.8, a.radius[id] + 0.015)) continue;
+      const nextX = x + vx * 0.8, nextZ = z + vz * 0.8;
+      const clearance = a.radius[id] + 0.015;
+      if (!this.nav.isSpawnable(nextX, nextZ, clearance)) continue;
+      // Keep a detour on the final sidewalk approach only if it closes the gap to the shopper's own lane.
+      if (this.portals[destination.portal].kind === 'door' && this.nearAssignedMouth(x, z, destination)
+        && (nextX - destination.x) ** 2 + (nextZ - destination.z) ** 2 >= (x - destination.x) ** 2 + (z - destination.z) ** 2
+        && this.nav.urban.sidewalks.lineInside(x, z, destination.x, destination.z, clearance)) return;
       direction.x = vx; direction.z = vz;
       return;
     }
@@ -189,7 +198,9 @@ export class PortalFlow {
 
   inPassage(id: number): boolean { return this.stage[id] !== Stage.Walking; }
   steppingAside(id: number): boolean { return this.yieldForEmergence && this.stepAsideTime[id] > 0; }
-  shopMouths(portal: number): readonly Point2[] { return this.gates[portal].exits; }
+  arrivalMouths(portal: number): readonly Point2[] { return this.gates[portal].exits; }
+  emergenceMouths(portal: number): readonly Point2[] { return this.gates[portal].entries; }
+  assignedArrivalMouth(id: number): Point2 { return this.destination[id]; }
 
   /** Verifies the assigned segment, including its endpoints, to Float32 storage precision. */
   inLane(id: number): boolean {
@@ -203,7 +214,9 @@ export class PortalFlow {
 
   /** Pick the less crowded open lanes, with a preference for entries farther from the exit. */
   private availableEntry(id: number, exit: Lane, grid: SpatialGrid, ready: boolean, step: number): Lane | undefined {
-    let best: Lane | undefined, bestScore = -Infinity;
+    const purpose = this.demand?.purpose(id, this.agents.generation[id] + 1);
+    const preferredKind = purpose && this.demand!.preferredOrigin(purpose);
+    let best: Lane | undefined, bestScore = -Infinity, alternative: Lane | undefined, alternativeScore = -Infinity;
     for (const gate of this.gates) {
       for (const lane of gate.entries) {
         if (lane.portal === exit.portal || lane.outgoing > 0 || (ready && !this.canAppear(id, lane))) continue;
@@ -215,10 +228,14 @@ export class PortalFlow {
         const obstruction = ready && this.portals[lane.portal].kind === 'door' ? this.blockedLanding(lane, grid, step) : 0;
         const score = -obstruction * 1.5 + 0.5 * distance / (distance + 40) + 2 / (2 + crowd)
           - occupancy / capacity - gate.admissions * 0.12 + this.random.range(0, 0.35);
-        if (score > bestScore) { best = lane; bestScore = score; }
+        if (!preferredKind || this.portals[lane.portal].kind === preferredKind) {
+          if (score > bestScore) { best = lane; bestScore = score; }
+        } else if (score > alternativeScore) {
+          alternative = lane; alternativeScore = score;
+        }
       }
     }
-    return best;
+    return best ?? alternative;
   }
 
   /** Replacements have a choice of doors. Prefer a clear landing over adding
@@ -394,12 +411,17 @@ export class PortalFlow {
     return true;
   }
 
+  private nearAssignedMouth(x: number, z: number, lane: Lane): boolean {
+    const portal = this.portals[lane.portal];
+    const reach = portal.kind === 'door' ? portal.width * 0.5 + 3 : CAPTURE;
+    return Math.abs(x - lane.x) <= reach && Math.abs(z - lane.z) <= reach;
+  }
+
   private reservePassages(id: number, x: number, z: number, step: number, grid: SpatialGrid, dt: number): boolean {
     const assigned = this.destination[id];
     const gate = this.gates[assigned.portal];
     const p = this.portals[assigned.portal], door = p.kind === 'door';
-    const reach = door ? p.width * 0.5 + 3 : CAPTURE;
-    const nearby = Math.abs(x - assigned.x) <= reach && Math.abs(z - assigned.z) <= reach;
+    const nearby = this.nearAssignedMouth(x, z, assigned);
     if (!this.onApproach[id] && (assigned.queueX !== assigned.x || assigned.queueZ !== assigned.z)) {
       const dx = x - assigned.queueX, dz = z - assigned.queueZ;
       if (dx * dx + dz * dz < 1 || (nearby && this.progress(assigned, id) > -Math.hypot(assigned.queueX - assigned.x, assigned.queueZ - assigned.z)
@@ -672,7 +694,8 @@ export class PortalFlow {
       write.phase[id] = this.random.range(0, Math.PI * 2);
       a.stalledTime[id] = 0; a.opacity[id] = 0;
       a.preferredVX[id] = write.vx[id]; a.preferredVZ[id] = write.vz[id];
-      const target = this.nav.scenario.targetTransitions?.[entry.portal] ?? this.randomDestination(entry.portal);
+      const target = this.nav.scenario.targetTransitions?.[entry.portal]
+        ?? this.demand?.target(id, a.generation[id], entry.x, entry.z, entry.portal) ?? this.randomDestination(entry.portal);
       this.assignTarget(id, target);
     }
     this.transferCount = 0;

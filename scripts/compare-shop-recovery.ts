@@ -1,5 +1,5 @@
 // Reproduce the frozen 116-person Shibuya comparison from docs/validation.md.
-// node --import tsx scripts/compare-shop-recovery.ts [baseline|recovery]
+// node --import tsx scripts/compare-shop-recovery.ts [baseline|recovery|all-portals|both]
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { CrossingExits } from '../src/simulation/CrossingExits';
+import { legacyShibuya } from '../src/scenarios/shibuya';
 import { Simulation } from '../src/simulation/Simulation';
 import { DEFAULT_CONFIG, FIXED_DT } from '../src/types';
 
@@ -15,9 +16,10 @@ const historicalCommit = '14741389390c008e472b0e52eed13e23592c65fb';
 const expectedSnapshot = '2a0647eef7c0936df911784b856d809b49c92d767a2dfaff72a34025269ad2f6';
 const expectedCohort = 'ad514c09c4a66c9a610426026826d3bf38236c87c46a4d98bc5b8cc6d3a56763';
 const stepsPerSecond = Math.round(1 / FIXED_DT);
-const mode = process.argv[2] ?? 'both';
-if (process.argv.length > 3 || !['baseline', 'recovery', 'both'].includes(mode)) {
-  throw new Error('Usage: node --import tsx scripts/compare-shop-recovery.ts [baseline|recovery|both]');
+type Run = 'baseline' | 'recovery' | 'all-portals';
+const mode = (process.argv[2] ?? 'both') as Run | 'both';
+if (process.argv.length > 3 || !['baseline', 'recovery', 'all-portals', 'both'].includes(mode)) {
+  throw new Error('Usage: node --import tsx scripts/compare-shop-recovery.ts [baseline|recovery|all-portals|both]');
 }
 
 // Read the exact historical curb algorithm from Git without modifying the checkout.
@@ -39,7 +41,7 @@ async function historicalExits(): Promise<typeof CrossingExits> {
 function warmUp(sim: Simulation, previous: typeof CrossingExits) {
   // Freeze only the historical warmup behaviors. The existing simulation carries its
   // full trip reservations, RNG, and local perception state across the split at 300 s.
-  sim.setShopDeadlockRecovery(false);
+  sim.setPortalDeadlockRecovery(false);
   const exits = sim['crossings']!['exits'], headway = sim['headway']!, portals = sim['portals']!;
   const currentPrototype = Object.getPrototypeOf(exits);
   Object.setPrototypeOf(exits, previous.prototype);
@@ -52,9 +54,9 @@ function warmUp(sim: Simulation, previous: typeof CrossingExits) {
   Reflect.deleteProperty(portals, 'slideInBank');
 }
 
-function compare(enabled: boolean, previous: typeof CrossingExits) {
+function compare(run: Run, previous: typeof CrossingExits) {
   const sim = new Simulation({ ...DEFAULT_CONFIG, scenario: 'shibuya', count: 1000, seed: 42,
-    signalMode: 'auto', walkingSpeed: 1.35, avoidanceStrength: 1 });
+    signalMode: 'auto', walkingSpeed: 1.35, avoidanceStrength: 1 }, undefined, legacyShibuya);
   warmUp(sim, previous);
   const a = sim.agents, p = a.current;
   const hash = createHash('sha256');
@@ -63,8 +65,9 @@ function compare(enabled: boolean, previous: typeof CrossingExits) {
   }
   const snapshotHash = hash.digest('hex');
   assert.equal(snapshotHash, expectedSnapshot, 'Warmup must reproduce the recorded position, velocity, heading, and trip state.');
-  const target = sim.scenario.portals!.findIndex(portal => portal.id === 'northwest-shop');
-  const shop = sim.scenario.portals![target];
+  const portals = sim.scenario.portals!;
+  const target = portals.findIndex(portal => portal.id === 'northwest-shop');
+  const shop = portals[target];
   const cohort = new Map<number, number>();
   for (let id = 0; id < a.count; id++) {
     if (a.targetId[id] === target && a.portalStage[id] === 0 && a.stalledTime[id] > 5
@@ -73,17 +76,18 @@ function compare(enabled: boolean, previous: typeof CrossingExits) {
   const cohortHash = createHash('sha256').update(JSON.stringify([...cohort])).digest('hex');
   assert.equal(cohortHash, expectedCohort, 'The same 116 original trips must be followed in both arms.');
   const remaining = new Map(cohort);
-  const completedAtSplit = sim['portals']!.completedTrips[target], arrivalsAtSplit = sim.arrivals;
-  sim.setShopDeadlockRecovery(enabled);
+  const completedAtSplit = portals.map((_, i) => sim.completedPortalTrips(i)), arrivalsAtSplit = sim.arrivals;
+  sim.setPortalDeadlockRecovery(run !== 'baseline', run === 'recovery' ? shop.id : undefined);
   let activeSteps = 0, episodes = 0, wasActive = false;
   const samples = [];
   for (let step = 1; step <= 300 * stepsPerSecond; step++) {
     sim.step();
-    if (sim.shopDeadlockActive) {
+    const active = sim.isPortalDeadlockActive(target);
+    if (active) {
       activeSteps++;
       if (!wasActive) episodes++;
     }
-    wasActive = sim.shopDeadlockActive;
+    wasActive = active;
     for (const [id, life] of remaining) {
       if (a.generation[id] === life) {
         assert.equal(a.targetId[id], target, 'A tagged person must retain the original destination.');
@@ -100,15 +104,16 @@ function compare(enabled: boolean, previous: typeof CrossingExits) {
         if (Math.hypot(a.current.x[id] - shop.end.x, a.current.z[id] - shop.end.z) <= 12) remainingWithin12m++;
       }
       samples.push({ elapsedSeconds: step / stepsPerSecond, taggedShopEntries: cohort.size - remaining.size,
-        remainingWithin12m, allShopEntries: sim['portals']!.completedTrips[target] - completedAtSplit,
+        remainingWithin12m, allShopEntries: sim.completedPortalTrips(target) - completedAtSplit[target],
+        completedByPortal: Object.fromEntries(portals.map((portal, i) => [portal.id, sim.completedPortalTrips(i) - completedAtSplit[i]])),
         allDestinationArrivals: sim.arrivals - arrivalsAtSplit, interventionEpisodes: episodes,
         interventionSeconds: Number((activeSteps * FIXED_DT).toFixed(2)) });
     }
   }
-  return { mode: enabled ? 'recovery' : 'baseline', seed: 42, splitSecond: 300, snapshotHash,
+  return { mode: run, seed: 42, splitSecond: 300, snapshotHash,
     cohortHash, cohortSize: cohort.size, samples };
 }
 
 const previous = await historicalExits();
-const runs = mode === 'both' ? [false, true] : [mode === 'recovery'];
-for (const enabled of runs) console.log(JSON.stringify(compare(enabled, previous), null, 2));
+const runs: Run[] = mode === 'both' ? ['baseline', 'recovery'] : [mode];
+for (const run of runs) console.log(JSON.stringify(compare(run, previous), null, 2));

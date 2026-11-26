@@ -1,14 +1,24 @@
 import type { PedestrianPortal, Scenario } from '../types';
 import map from './data/shibuya-map.json';
 import layout from '../../data/shibuya/layout.json';
+import expanded from '../../data/shibuya/expanded-portals.json';
 
-const portals: PedestrianPortal[] = [
-  ...layout.doorways.map(door => ({ ...door, kind: 'door' as const })),
-  ...layout.streetEnds.map(street => ({ ...street, kind: 'street' as const })),
-];
+const originalDoors: PedestrianPortal[] = layout.doorways.map(door => ({ ...door, kind: 'door' }));
+const originalStreets: PedestrianPortal[] = layout.streetEnds.map(street => ({ ...street, kind: 'street', edge: 'north' }));
+const extraDoors: PedestrianPortal[] = expanded.doorways.map(door => ({ ...door, kind: 'door' }));
+function streetPortal(street: Omit<PedestrianPortal, 'kind' | 'edge'> & { edge?: string }): PedestrianPortal {
+  const { edge } = street;
+  if (edge !== 'north' && edge !== 'south' && edge !== 'east' && edge !== 'west') {
+    throw new Error(`Missing street direction for ${street.id}.`);
+  }
+  return { ...street, kind: 'street', edge };
+}
+const extraStreets = expanded.streetEnds.map(streetPortal);
+const allDoors = [...originalDoors, ...extraDoors];
+const portals = [...originalDoors, ...originalStreets];
 
-/** PLATEAU FY2025 buildings/roads, with documented ground-level demo overlays. */
-export const shibuya: Scenario = {
+/** Original routes for replaying the recorded six-portal crowd and historical comparisons. */
+export const legacyShibuya: Scenario = {
   id: 'shibuya',
   name: 'Shibuya Scramble',
   description: 'PLATEAU city geometry with signal-controlled pedestrian flow.',
@@ -27,3 +37,22 @@ export const shibuya: Scenario = {
     signalPositions: layout.signalPositions,
   },
 };
+
+/** Ground-level Shibuya variants share their starting population and trip-purpose distribution. */
+export function createShibuyaScenario(shopLayout: 'five' | 'expanded', streetLayout: 'north' | 'all'): Scenario {
+  const selected = [...portals];
+  if (shopLayout === 'expanded') selected.push(...extraDoors);
+  if (streetLayout === 'all') selected.push(...extraStreets);
+  return {
+    ...legacyShibuya,
+    portals: selected,
+    targets: selected.map(p => p.approach),
+    spawnTargets: undefined,
+    targetTransitions: undefined,
+    initialDoorways: allDoors,
+    portalTripMix: { through: 0.50, shopping: 0.25 },
+    portalRecoveryByDefault: false,
+  };
+}
+
+export const shibuya = createShibuyaScenario('expanded', 'all');

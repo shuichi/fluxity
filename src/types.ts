@@ -16,6 +16,8 @@ export interface Point2 { x: number; z: number }
 export interface PedestrianPortal {
   id: string;
   kind: 'door' | 'street';
+  /** Direction served by a street gateway, including termini just inside the map's walkable extent. */
+  edge?: 'north' | 'south' | 'east' | 'west';
   approach: Point2;
   end: Point2;
   width: number;
@@ -70,6 +72,12 @@ export interface Scenario {
   spawnTargets?: (number | number[])[];
   /** Next destination from each target, or the destination for a trip starting at that portal. */
   targetTransitions?: number[];
+  /** Draw a trip purpose first. The remaining share represents people leaving shops for the street. */
+  portalTripMix?: { through: number; shopping: number };
+  /** Doorways to keep clear at initial placement, shared by alternative layouts of the same map. */
+  initialDoorways?: PedestrianPortal[];
+  /** Defaults to enabled for legacy Shibuya scenarios. */
+  portalRecoveryByDefault?: boolean;
   targetSpread?: number;
   navigationCellSize?: number;
   urbanMap?: UrbanMap;

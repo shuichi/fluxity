@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { shibuya } from '../scenarios/shibuya';
+import { createShibuyaScenario, shibuya } from '../scenarios/shibuya';
 import { createEnvironment } from '../renderer/Environment';
 import { SCENE_MATERIAL } from '../renderer/ScrambleEnvironment';
 import { Navigation } from '../simulation/Navigation';
+import { PortalTripDemand } from '../simulation/PortalTripDemand';
 import { PolygonRegion } from '../simulation/UrbanGeometry';
 
 describe('Shibuya entrances', () => {
@@ -35,18 +36,50 @@ describe('Shibuya entrances', () => {
         expect(inside, portal.id).toBe(portal.kind === 'door');
       }
     }
-    // Every destination is still served after the first wave of pedestrians has exited.
-    expect(new Set(shibuya.targetTransitions)).toEqual(new Set(portals.map((_, i) => i)));
   });
 
-  it('continues the exterior street lanes on actual rendered pavement outside the simulation bounds', () => {
+  it('keeps shopping demand comparable and serves distinct directions on through trips', () => {
+    for (const shops of ['five', 'expanded'] as const) for (const streets of ['north', 'all'] as const) {
+      const scenario = createShibuyaScenario(shops, streets);
+      const portals = scenario.portals!;
+      expect(new Set(portals.map(p => p.id)).size).toBe(portals.length);
+      expect(portals.filter(p => p.kind === 'door')).toHaveLength(shops === 'five' ? 5 : 50);
+      const edges = portals.filter(p => p.kind === 'street').map(p => p.edge);
+      expect(new Set(edges)).toEqual(new Set(streets === 'north' ? ['north'] : ['north', 'south', 'east', 'west']));
+      const demand = new PortalTripDemand(portals, scenario.portalTripMix!, 42);
+      const served = new Set<number>();
+      for (let id = 0; id < 10000; id++) {
+        const purpose = demand.purpose(id, 1);
+        const kind = demand.preferredOrigin(purpose);
+        const origin = portals.findIndex(p => p.kind === kind);
+        const point = portals[origin].approach;
+        const target = demand.target(id, 1, point.x, point.z, origin);
+        expect(target).not.toBe(origin);
+        expect(portals[target].kind).toBe(purpose === 'shopping' ? 'door' : 'street');
+        if (purpose === 'through' && streets === 'all') expect(portals[target].edge).not.toBe(portals[origin].edge);
+        served.add(target);
+      }
+      // The first street cannot be a through destination from itself. Outbound trips still reach it.
+      expect(served.size).toBe(portals.length);
+    }
+  });
+
+  it('continues all street lanes on actual rendered pavement up to their mapped endpoints', () => {
     const floats = readFileSync('public/data/shibuya/vertices.bin'), ints = readFileSync('public/data/shibuya/indices.bin');
     const vertices = new Float32Array(floats.buffer, floats.byteOffset, floats.byteLength / 4);
     const indices = new Uint32Array(ints.buffer, ints.byteOffset, ints.byteLength / 4);
-    for (const { approach, end, width } of shibuya.portals!.filter(p => p.kind === 'street')) {
-      expect(Math.abs(end.x) > shibuya.bounds.maxX || Math.abs(end.z) > shibuya.bounds.maxZ).toBe(true);
+    const sidewalks = new PolygonRegion(shibuya.urbanMap!.sidewalks);
+    for (const { id, approach, end, width } of shibuya.portals!.filter(p => p.kind === 'street')) {
       const length = Math.hypot(end.x - approach.x, end.z - approach.z);
       const dx = (end.x - approach.x) / length, dz = (end.z - approach.z) / length;
+      if (id === 'north-street') {
+        expect(end.z).toBeLessThan(shibuya.bounds.minZ);
+      } else {
+        // Inside the tile, exits are at a break in the mapped pavement ahead.
+        const endsAtBreak = Array.from({ length: 12 }, (_, k) => (k + 1) * 0.25)
+          .some(d => !sidewalks.contains(end.x + dx * d, end.z + dz * d));
+        expect(endsAtBreak, id).toBe(true);
+      }
       const probes = [];
       for (let d = 0; d <= length; d += 0.5) for (const lane of [-0.5, 0, 0.5]) {
         probes.push({ x: approach.x + dx * d - dz * width * lane, z: approach.z + dz * d + dx * width * lane, paved: false });

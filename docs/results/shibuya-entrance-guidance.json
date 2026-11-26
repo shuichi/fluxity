@@ -1,0 +1,1354 @@
+{
+  "exploratoryVariant": {
+    "adopted": false,
+    "policy": "skip neighboring apron guidance on every directly reachable final storefront approach",
+    "portalFlowSha256": "53d5417555b50e24c2e8ff084127f64691ab59887883fcece8e5515e0d6a73de",
+    "assigned": 1735,
+    "admissions": 227,
+    "exits": 508,
+    "longDwellEver": 22,
+    "longDwellAtEnd": 17
+  },
+  "soloExperiment": {
+    "seed": 467,
+    "setbackMetres": 1.65,
+    "limitSeconds": 60,
+    "stepsPerSecond": 30,
+    "signalMode": "green",
+    "population": 1,
+    "metaAI": false,
+    "completedBefore": 46,
+    "completedAfter": 60
+  },
+  "experiment": {
+    "seed": 42,
+    "population": 1000,
+    "durationSeconds": 1109,
+    "stepsPerSecond": 30,
+    "signalMode": "auto",
+    "walkingSpeed": 1.35,
+    "avoidanceStrength": 1,
+    "metaAI": false,
+    "dwellSeconds": 300,
+    "dwellRadiusMetres": 12,
+    "dwellSampleIntervalSeconds": 1
+  },
+  "initialState": {
+    "initialPositionHash": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+    "initialTraitHash": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+    "initialRouteHash": "2a53f13f299de67374931e9266bec03775170622595c8f98e61c4817c219c38c"
+  },
+  "provenance": {
+    "archivedBaseline": "shibuya-destinations.json",
+    "archivedBaselineSha256": "37da3fc644e47231ae2bc28b2615b705f0791f2326f49309cc3f67b8d255fbc5",
+    "beforePortalFlowSha256": "2d4c56feb2254f3e6f6ffd52b10d82591410de6395bbc504f59f2e57d02418be",
+    "afterPortalFlowSha256": "09063516e77fe735be1e191829c380bac85dba709c377cd8d44802e6a48f810a",
+    "measurementScriptSha256": "a2d0a53dfc6a0779b32d71fdbe79fcd61fc46c787a763d7417f36d092cd2e42f"
+  },
+  "totals": {
+    "door": {
+      "before": {
+        "assigned": 486,
+        "completed": 226,
+        "longDwellEver": 51,
+        "longDwellAtEnd": 47
+      },
+      "after": {
+        "assigned": 475,
+        "completed": 273,
+        "longDwellEver": 11,
+        "longDwellAtEnd": 10
+      }
+    },
+    "street": {
+      "before": {
+        "assigned": 1455,
+        "completed": 715,
+        "longDwellEver": 20,
+        "longDwellAtEnd": 6
+      },
+      "after": {
+        "assigned": 1455,
+        "completed": 657,
+        "longDwellEver": 12,
+        "longDwellAtEnd": 8
+      }
+    },
+    "all": {
+      "before": {
+        "assigned": 1941,
+        "completed": 941,
+        "longDwellEver": 71,
+        "longDwellAtEnd": 53
+      },
+      "after": {
+        "assigned": 1930,
+        "completed": 930,
+        "longDwellEver": 23,
+        "longDwellAtEnd": 18
+      }
+    }
+  },
+  "points": [
+    {
+      "id": "northwest-shop",
+      "kind": "door",
+      "initial": 6,
+      "before": {
+        "assigned": 10,
+        "completed": 2,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 13,
+        "completed": 6,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "soloCompletionStep": {
+        "before": 95,
+        "after": 95
+      }
+    },
+    {
+      "id": "north-shop",
+      "kind": "door",
+      "initial": 15,
+      "before": {
+        "assigned": 25,
+        "completed": 7,
+        "longDwellEver": 12,
+        "longDwellAtEnd": 12
+      },
+      "after": {
+        "assigned": 23,
+        "completed": 15,
+        "longDwellEver": 6,
+        "longDwellAtEnd": 6
+      },
+      "soloCompletionStep": {
+        "before": 81,
+        "after": 81
+      }
+    },
+    {
+      "id": "east-shop",
+      "kind": "door",
+      "initial": 8,
+      "before": {
+        "assigned": 16,
+        "completed": 12,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 15,
+        "completed": 14,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 86,
+        "after": 86
+      }
+    },
+    {
+      "id": "forecourt-building",
+      "kind": "door",
+      "initial": 12,
+      "before": {
+        "assigned": 26,
+        "completed": 21,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 25,
+        "completed": 21,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 72,
+        "after": 72
+      }
+    },
+    {
+      "id": "southwest-shop",
+      "kind": "door",
+      "initial": 18,
+      "before": {
+        "assigned": 26,
+        "completed": 20,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 24,
+        "completed": 22,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 77,
+        "after": 77
+      }
+    },
+    {
+      "id": "north-street",
+      "kind": "street",
+      "initial": 88,
+      "before": {
+        "assigned": 154,
+        "completed": 108,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 159,
+        "completed": 22,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 189,
+        "after": 189
+      }
+    },
+    {
+      "id": "shop-06",
+      "kind": "door",
+      "initial": 2,
+      "before": {
+        "assigned": 5,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 5,
+        "completed": 3,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 68,
+        "after": 68
+      }
+    },
+    {
+      "id": "shop-07",
+      "kind": "door",
+      "initial": 6,
+      "before": {
+        "assigned": 12,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 12,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 73,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-08",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 8,
+        "completed": 3,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 11,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 78,
+        "after": 78
+      }
+    },
+    {
+      "id": "shop-09",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 8,
+        "completed": 1,
+        "longDwellEver": 2,
+        "longDwellAtEnd": 2
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 77
+      }
+    },
+    {
+      "id": "shop-10",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 9,
+        "completed": 7,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 5,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 73,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-11",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 6,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 7,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 77,
+        "after": 77
+      }
+    },
+    {
+      "id": "shop-12",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 10,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 9,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 91,
+        "after": 91
+      }
+    },
+    {
+      "id": "shop-13",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 6,
+        "completed": 4,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 3,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-14",
+      "kind": "door",
+      "initial": 7,
+      "before": {
+        "assigned": 13,
+        "completed": 7,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 9,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 77,
+        "after": 77
+      }
+    },
+    {
+      "id": "shop-15",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 5,
+        "completed": 5,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 6,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 78
+      }
+    },
+    {
+      "id": "shop-16",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 6,
+        "completed": 3,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 7,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-17",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 8,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 7,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 75
+      }
+    },
+    {
+      "id": "shop-18",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 6,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 9,
+        "completed": 3,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 67,
+        "after": 67
+      }
+    },
+    {
+      "id": "shop-19",
+      "kind": "door",
+      "initial": 6,
+      "before": {
+        "assigned": 9,
+        "completed": 9,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 7,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 97
+      }
+    },
+    {
+      "id": "shop-20",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 6,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 85,
+        "after": 85
+      }
+    },
+    {
+      "id": "shop-21",
+      "kind": "door",
+      "initial": 2,
+      "before": {
+        "assigned": 6,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 6,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 87,
+        "after": 87
+      }
+    },
+    {
+      "id": "shop-22",
+      "kind": "door",
+      "initial": 10,
+      "before": {
+        "assigned": 12,
+        "completed": 10,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 16,
+        "completed": 12,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 82,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-23",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 6,
+        "completed": 0,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "after": {
+        "assigned": 7,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 91
+      }
+    },
+    {
+      "id": "shop-24",
+      "kind": "door",
+      "initial": 7,
+      "before": {
+        "assigned": 12,
+        "completed": 11,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 11,
+        "completed": 7,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 82,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-25",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 8,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 6,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 87,
+        "after": 87
+      }
+    },
+    {
+      "id": "shop-26",
+      "kind": "door",
+      "initial": 7,
+      "before": {
+        "assigned": 14,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 10,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 77,
+        "after": 77
+      }
+    },
+    {
+      "id": "shop-27",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 6,
+        "completed": 0,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-28",
+      "kind": "door",
+      "initial": 2,
+      "before": {
+        "assigned": 5,
+        "completed": 1,
+        "longDwellEver": 2,
+        "longDwellAtEnd": 2
+      },
+      "after": {
+        "assigned": 3,
+        "completed": 0,
+        "longDwellEver": 3,
+        "longDwellAtEnd": 3
+      },
+      "soloCompletionStep": {
+        "before": 68,
+        "after": 68
+      }
+    },
+    {
+      "id": "shop-29",
+      "kind": "door",
+      "initial": 6,
+      "before": {
+        "assigned": 8,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 0,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 73,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-30",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 11,
+        "completed": 0,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "after": {
+        "assigned": 10,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 82,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-31",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 12,
+        "completed": 1,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 138,
+        "after": 124
+      }
+    },
+    {
+      "id": "shop-32",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 13,
+        "completed": 7,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 11,
+        "completed": 5,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 73,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-33",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 8,
+        "completed": 5,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 10,
+        "completed": 10,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 77,
+        "after": 77
+      }
+    },
+    {
+      "id": "shop-34",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 8,
+        "completed": 3,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 12,
+        "completed": 11,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 82,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-35",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 7,
+        "completed": 0,
+        "longDwellEver": 5,
+        "longDwellAtEnd": 5
+      },
+      "after": {
+        "assigned": 7,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 78
+      }
+    },
+    {
+      "id": "shop-36",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 8,
+        "completed": 0,
+        "longDwellEver": 3,
+        "longDwellAtEnd": 3
+      },
+      "after": {
+        "assigned": 10,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-37",
+      "kind": "door",
+      "initial": 6,
+      "before": {
+        "assigned": 10,
+        "completed": 8,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 11,
+        "completed": 8,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 82,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-38",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 7,
+        "completed": 0,
+        "longDwellEver": 5,
+        "longDwellAtEnd": 5
+      },
+      "after": {
+        "assigned": 5,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 78
+      }
+    },
+    {
+      "id": "shop-39",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 13,
+        "completed": 0,
+        "longDwellEver": 7,
+        "longDwellAtEnd": 7
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 7,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 87
+      }
+    },
+    {
+      "id": "shop-40",
+      "kind": "door",
+      "initial": 6,
+      "before": {
+        "assigned": 15,
+        "completed": 1,
+        "longDwellEver": 6,
+        "longDwellAtEnd": 6
+      },
+      "after": {
+        "assigned": 9,
+        "completed": 8,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 87
+      }
+    },
+    {
+      "id": "shop-41",
+      "kind": "door",
+      "initial": 2,
+      "before": {
+        "assigned": 4,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 5,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 116,
+        "after": 116
+      }
+    },
+    {
+      "id": "shop-42",
+      "kind": "door",
+      "initial": 2,
+      "before": {
+        "assigned": 6,
+        "completed": 2,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": null,
+        "after": 82
+      }
+    },
+    {
+      "id": "shop-43",
+      "kind": "door",
+      "initial": 7,
+      "before": {
+        "assigned": 15,
+        "completed": 8,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 15,
+        "completed": 11,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 73,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-44",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 6,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 10,
+        "completed": 9,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 73,
+        "after": 73
+      }
+    },
+    {
+      "id": "shop-45",
+      "kind": "door",
+      "initial": 1,
+      "before": {
+        "assigned": 5,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 5,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 81,
+        "after": 81
+      }
+    },
+    {
+      "id": "shop-46",
+      "kind": "door",
+      "initial": 5,
+      "before": {
+        "assigned": 8,
+        "completed": 6,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "after": {
+        "assigned": 7,
+        "completed": 4,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 68,
+        "after": 68
+      }
+    },
+    {
+      "id": "shop-47",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 10,
+        "completed": 5,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 9,
+        "completed": 5,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 145,
+        "after": 145
+      }
+    },
+    {
+      "id": "shop-48",
+      "kind": "door",
+      "initial": 7,
+      "before": {
+        "assigned": 11,
+        "completed": 9,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 7,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 161,
+        "after": 161
+      }
+    },
+    {
+      "id": "shop-49",
+      "kind": "door",
+      "initial": 4,
+      "before": {
+        "assigned": 8,
+        "completed": 6,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 8,
+        "completed": 8,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 145,
+        "after": 145
+      }
+    },
+    {
+      "id": "shop-50",
+      "kind": "door",
+      "initial": 3,
+      "before": {
+        "assigned": 4,
+        "completed": 4,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 5,
+        "completed": 5,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 79,
+        "after": 79
+      }
+    },
+    {
+      "id": "north-street-west",
+      "kind": "street",
+      "initial": 83,
+      "before": {
+        "assigned": 188,
+        "completed": 10,
+        "longDwellEver": 1,
+        "longDwellAtEnd": 1
+      },
+      "after": {
+        "assigned": 164,
+        "completed": 10,
+        "longDwellEver": 2,
+        "longDwellAtEnd": 2
+      },
+      "soloCompletionStep": {
+        "before": 190,
+        "after": 190
+      }
+    },
+    {
+      "id": "northwest-street-west",
+      "kind": "street",
+      "initial": 56,
+      "before": {
+        "assigned": 99,
+        "completed": 1,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 115,
+        "completed": 25,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 190,
+        "after": 190
+      }
+    },
+    {
+      "id": "northwest-street-east",
+      "kind": "street",
+      "initial": 62,
+      "before": {
+        "assigned": 119,
+        "completed": 96,
+        "longDwellEver": 6,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 119,
+        "completed": 63,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 159,
+        "after": 159
+      }
+    },
+    {
+      "id": "west-street-north",
+      "kind": "street",
+      "initial": 114,
+      "before": {
+        "assigned": 201,
+        "completed": 12,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 193,
+        "completed": 5,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 190,
+        "after": 190
+      }
+    },
+    {
+      "id": "west-street-south",
+      "kind": "street",
+      "initial": 95,
+      "before": {
+        "assigned": 162,
+        "completed": 107,
+        "longDwellEver": 9,
+        "longDwellAtEnd": 5
+      },
+      "after": {
+        "assigned": 157,
+        "completed": 103,
+        "longDwellEver": 10,
+        "longDwellAtEnd": 6
+      },
+      "soloCompletionStep": {
+        "before": 131,
+        "after": 131
+      }
+    },
+    {
+      "id": "east-street-north",
+      "kind": "street",
+      "initial": 79,
+      "before": {
+        "assigned": 164,
+        "completed": 123,
+        "longDwellEver": 4,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 176,
+        "completed": 128,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 118,
+        "after": 118
+      }
+    },
+    {
+      "id": "east-street-south",
+      "kind": "street",
+      "initial": 51,
+      "before": {
+        "assigned": 111,
+        "completed": 80,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 100,
+        "completed": 74,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 190,
+        "after": 190
+      }
+    },
+    {
+      "id": "south-street-west",
+      "kind": "street",
+      "initial": 72,
+      "before": {
+        "assigned": 159,
+        "completed": 109,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 162,
+        "completed": 134,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 193,
+        "after": 193
+      }
+    },
+    {
+      "id": "south-street-east",
+      "kind": "street",
+      "initial": 46,
+      "before": {
+        "assigned": 98,
+        "completed": 69,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "after": {
+        "assigned": 110,
+        "completed": 93,
+        "longDwellEver": 0,
+        "longDwellAtEnd": 0
+      },
+      "soloCompletionStep": {
+        "before": 193,
+        "after": 193
+      }
+    }
+  ]
+}

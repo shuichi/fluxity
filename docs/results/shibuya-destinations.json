@@ -1,0 +1,1259 @@
+{
+  "seed": 42,
+  "population": 1000,
+  "durationSeconds": 1109,
+  "stepsPerSecond": 30,
+  "signalMode": "auto",
+  "walkingSpeed": 1.35,
+  "avoidanceStrength": 1,
+  "metaAI": false,
+  "dwellSeconds": 300,
+  "dwellRadiusMetres": 12,
+  "dwellSampleIntervalSeconds": 1,
+  "conditions": [
+    {
+      "shops": "five",
+      "streets": "north",
+      "initialPositionHash": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+      "initialTraitHash": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+      "total": {
+        "assigned": 1442,
+        "completed": 442,
+        "longDwellEver": 211,
+        "longDwellAtEnd": 70
+      },
+      "points": [
+        {
+          "id": "northwest-shop",
+          "kind": "door",
+          "initial": 39,
+          "assigned": 54,
+          "completed": 52,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-shop",
+          "kind": "door",
+          "initial": 52,
+          "assigned": 69,
+          "completed": 69,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "east-shop",
+          "kind": "door",
+          "initial": 53,
+          "assigned": 72,
+          "completed": 71,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "forecourt-building",
+          "kind": "door",
+          "initial": 62,
+          "assigned": 88,
+          "completed": 87,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "southwest-shop",
+          "kind": "door",
+          "initial": 48,
+          "assigned": 74,
+          "completed": 74,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-street",
+          "kind": "street",
+          "initial": 746,
+          "assigned": 1085,
+          "completed": 89,
+          "longDwellEver": 211,
+          "longDwellAtEnd": 70
+        }
+      ]
+    },
+    {
+      "shops": "five",
+      "streets": "all",
+      "initialPositionHash": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+      "initialTraitHash": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+      "total": {
+        "assigned": 2963,
+        "completed": 1963,
+        "longDwellEver": 29,
+        "longDwellAtEnd": 29
+      },
+      "points": [
+        {
+          "id": "northwest-shop",
+          "kind": "door",
+          "initial": 39,
+          "assigned": 110,
+          "completed": 26,
+          "longDwellEver": 5,
+          "longDwellAtEnd": 5
+        },
+        {
+          "id": "north-shop",
+          "kind": "door",
+          "initial": 52,
+          "assigned": 131,
+          "completed": 59,
+          "longDwellEver": 24,
+          "longDwellAtEnd": 24
+        },
+        {
+          "id": "east-shop",
+          "kind": "door",
+          "initial": 53,
+          "assigned": 149,
+          "completed": 136,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "forecourt-building",
+          "kind": "door",
+          "initial": 62,
+          "assigned": 171,
+          "completed": 154,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "southwest-shop",
+          "kind": "door",
+          "initial": 48,
+          "assigned": 167,
+          "completed": 160,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-street",
+          "kind": "street",
+          "initial": 88,
+          "assigned": 234,
+          "completed": 226,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-street-west",
+          "kind": "street",
+          "initial": 83,
+          "assigned": 285,
+          "completed": 9,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "northwest-street-west",
+          "kind": "street",
+          "initial": 56,
+          "assigned": 146,
+          "completed": 10,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "northwest-street-east",
+          "kind": "street",
+          "initial": 62,
+          "assigned": 180,
+          "completed": 166,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "west-street-north",
+          "kind": "street",
+          "initial": 114,
+          "assigned": 279,
+          "completed": 9,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "west-street-south",
+          "kind": "street",
+          "initial": 95,
+          "assigned": 255,
+          "completed": 219,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "east-street-north",
+          "kind": "street",
+          "initial": 79,
+          "assigned": 265,
+          "completed": 236,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "east-street-south",
+          "kind": "street",
+          "initial": 51,
+          "assigned": 167,
+          "completed": 156,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "south-street-west",
+          "kind": "street",
+          "initial": 72,
+          "assigned": 274,
+          "completed": 255,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "south-street-east",
+          "kind": "street",
+          "initial": 46,
+          "assigned": 150,
+          "completed": 142,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        }
+      ]
+    },
+    {
+      "shops": "expanded",
+      "streets": "north",
+      "initialPositionHash": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+      "initialTraitHash": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+      "total": {
+        "assigned": 1162,
+        "completed": 162,
+        "longDwellEver": 14,
+        "longDwellAtEnd": 10
+      },
+      "points": [
+        {
+          "id": "northwest-shop",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 6,
+          "completed": 1,
+          "longDwellEver": 3,
+          "longDwellAtEnd": 3
+        },
+        {
+          "id": "north-shop",
+          "kind": "door",
+          "initial": 15,
+          "assigned": 16,
+          "completed": 8,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "east-shop",
+          "kind": "door",
+          "initial": 8,
+          "assigned": 10,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "forecourt-building",
+          "kind": "door",
+          "initial": 12,
+          "assigned": 13,
+          "completed": 11,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "southwest-shop",
+          "kind": "door",
+          "initial": 18,
+          "assigned": 19,
+          "completed": 18,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-street",
+          "kind": "street",
+          "initial": 746,
+          "assigned": 866,
+          "completed": 35,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-06",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 4,
+          "completed": 2,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-07",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 9,
+          "completed": 2,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-08",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 8,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-09",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 4,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-10",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 6,
+          "completed": 0,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-11",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 4,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-12",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 5,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-13",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 4,
+          "completed": 0,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-14",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 7,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-15",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 3,
+          "completed": 2,
+          "longDwellEver": 2,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-16",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 3,
+          "completed": 2,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-17",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 4,
+          "completed": 2,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-18",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 4,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-19",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 7,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-20",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 5,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-21",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 2,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-22",
+          "kind": "door",
+          "initial": 10,
+          "assigned": 10,
+          "completed": 5,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-23",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 5,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-24",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 8,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-25",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 4,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-26",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 9,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-27",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 3,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-28",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 3,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-29",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 7,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-30",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 5,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-31",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 3,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-32",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 5,
+          "completed": 3,
+          "longDwellEver": 2,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-33",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 6,
+          "completed": 2,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-34",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 6,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-35",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 5,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-36",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 4,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-37",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 6,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-38",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 4,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-39",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 4,
+          "completed": 0,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-40",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 7,
+          "completed": 0,
+          "longDwellEver": 2,
+          "longDwellAtEnd": 2
+        },
+        {
+          "id": "shop-41",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 2,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-42",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 4,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-43",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 8,
+          "completed": 5,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-44",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 6,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-45",
+          "kind": "door",
+          "initial": 1,
+          "assigned": 2,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-46",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 5,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-47",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 6,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-48",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 8,
+          "completed": 7,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-49",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 5,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-50",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 3,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        }
+      ]
+    },
+    {
+      "shops": "expanded",
+      "streets": "all",
+      "initialPositionHash": "3f347d44932c53ef4c15b54d2e17d1c3d268feff49e49a1e8fefa753a76d2d7d",
+      "initialTraitHash": "7f34ff1fd14de19b3c5e39888cbfeef7b04ae20b5f35e01a7b5eaafaa09f0617",
+      "total": {
+        "assigned": 1941,
+        "completed": 941,
+        "longDwellEver": 71,
+        "longDwellAtEnd": 53
+      },
+      "points": [
+        {
+          "id": "northwest-shop",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 10,
+          "completed": 2,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-shop",
+          "kind": "door",
+          "initial": 15,
+          "assigned": 25,
+          "completed": 7,
+          "longDwellEver": 12,
+          "longDwellAtEnd": 12
+        },
+        {
+          "id": "east-shop",
+          "kind": "door",
+          "initial": 8,
+          "assigned": 16,
+          "completed": 12,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "forecourt-building",
+          "kind": "door",
+          "initial": 12,
+          "assigned": 26,
+          "completed": 21,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "southwest-shop",
+          "kind": "door",
+          "initial": 18,
+          "assigned": 26,
+          "completed": 20,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-street",
+          "kind": "street",
+          "initial": 88,
+          "assigned": 154,
+          "completed": 108,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-06",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 5,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-07",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 12,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-08",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 8,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-09",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 8,
+          "completed": 1,
+          "longDwellEver": 2,
+          "longDwellAtEnd": 2
+        },
+        {
+          "id": "shop-10",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 9,
+          "completed": 7,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-11",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 6,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-12",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 10,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-13",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 6,
+          "completed": 4,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-14",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 13,
+          "completed": 7,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-15",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 5,
+          "completed": 5,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-16",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 6,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-17",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 8,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-18",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 6,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-19",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 9,
+          "completed": 9,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-20",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 6,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-21",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 6,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-22",
+          "kind": "door",
+          "initial": 10,
+          "assigned": 12,
+          "completed": 10,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-23",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 6,
+          "completed": 0,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-24",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 12,
+          "completed": 11,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-25",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 8,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-26",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 14,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-27",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 6,
+          "completed": 0,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-28",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 5,
+          "completed": 1,
+          "longDwellEver": 2,
+          "longDwellAtEnd": 2
+        },
+        {
+          "id": "shop-29",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 8,
+          "completed": 0,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-30",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 11,
+          "completed": 0,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-31",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 12,
+          "completed": 1,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-32",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 13,
+          "completed": 7,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-33",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 8,
+          "completed": 5,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-34",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 8,
+          "completed": 3,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-35",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 7,
+          "completed": 0,
+          "longDwellEver": 5,
+          "longDwellAtEnd": 5
+        },
+        {
+          "id": "shop-36",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 8,
+          "completed": 0,
+          "longDwellEver": 3,
+          "longDwellAtEnd": 3
+        },
+        {
+          "id": "shop-37",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 10,
+          "completed": 8,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-38",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 7,
+          "completed": 0,
+          "longDwellEver": 5,
+          "longDwellAtEnd": 5
+        },
+        {
+          "id": "shop-39",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 13,
+          "completed": 0,
+          "longDwellEver": 7,
+          "longDwellAtEnd": 7
+        },
+        {
+          "id": "shop-40",
+          "kind": "door",
+          "initial": 6,
+          "assigned": 15,
+          "completed": 1,
+          "longDwellEver": 6,
+          "longDwellAtEnd": 6
+        },
+        {
+          "id": "shop-41",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 4,
+          "completed": 2,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-42",
+          "kind": "door",
+          "initial": 2,
+          "assigned": 6,
+          "completed": 2,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-43",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 15,
+          "completed": 8,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-44",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 6,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-45",
+          "kind": "door",
+          "initial": 1,
+          "assigned": 5,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-46",
+          "kind": "door",
+          "initial": 5,
+          "assigned": 8,
+          "completed": 6,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "shop-47",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 10,
+          "completed": 5,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-48",
+          "kind": "door",
+          "initial": 7,
+          "assigned": 11,
+          "completed": 9,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-49",
+          "kind": "door",
+          "initial": 4,
+          "assigned": 8,
+          "completed": 6,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "shop-50",
+          "kind": "door",
+          "initial": 3,
+          "assigned": 4,
+          "completed": 4,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "north-street-west",
+          "kind": "street",
+          "initial": 83,
+          "assigned": 188,
+          "completed": 10,
+          "longDwellEver": 1,
+          "longDwellAtEnd": 1
+        },
+        {
+          "id": "northwest-street-west",
+          "kind": "street",
+          "initial": 56,
+          "assigned": 99,
+          "completed": 1,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "northwest-street-east",
+          "kind": "street",
+          "initial": 62,
+          "assigned": 119,
+          "completed": 96,
+          "longDwellEver": 6,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "west-street-north",
+          "kind": "street",
+          "initial": 114,
+          "assigned": 201,
+          "completed": 12,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "west-street-south",
+          "kind": "street",
+          "initial": 95,
+          "assigned": 162,
+          "completed": 107,
+          "longDwellEver": 9,
+          "longDwellAtEnd": 5
+        },
+        {
+          "id": "east-street-north",
+          "kind": "street",
+          "initial": 79,
+          "assigned": 164,
+          "completed": 123,
+          "longDwellEver": 4,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "east-street-south",
+          "kind": "street",
+          "initial": 51,
+          "assigned": 111,
+          "completed": 80,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "south-street-west",
+          "kind": "street",
+          "initial": 72,
+          "assigned": 159,
+          "completed": 109,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        },
+        {
+          "id": "south-street-east",
+          "kind": "street",
+          "initial": 46,
+          "assigned": 98,
+          "completed": 69,
+          "longDwellEver": 0,
+          "longDwellAtEnd": 0
+        }
+      ]
+    }
+  ]
+}
