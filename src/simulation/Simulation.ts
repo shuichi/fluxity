@@ -9,6 +9,7 @@ import { PortalFlow } from './PortalFlow';
 import { DoorwayClearance, doorwayRadius } from './DoorwayClearance';
 import { DoorwayCourtesy } from './DoorwayCourtesy';
 import { DoorwayHeadway } from './DoorwayHeadway';
+import { ShopDeadlockRecovery } from './ShopDeadlockRecovery';
 import { Steering } from './Steering';
 import type { LocalAvoidance } from './Steering';
 import { TrafficSignal } from './TrafficSignal';
@@ -47,6 +48,8 @@ export class Simulation {
   private readonly doorways?: DoorwayClearance;
   private readonly courtesy?: DoorwayCourtesy;
   private readonly headway?: DoorwayHeadway;
+  private shopRecovery?: ShopDeadlockRecovery;
+  private shopRecoveryEnabled = true;
   stepCount = 0;
   time = 0;
   arrivals = 0;
@@ -55,6 +58,7 @@ export class Simulation {
   private readonly projected = { x: 0, z: 0 };
 
   get signal(): SignalState | undefined { return this.traffic?.state; }
+  get shopDeadlockActive(): boolean { return this.shopRecovery?.active ?? false; }
 
   constructor(config: SimulationConfig, avoidance?: LocalAvoidance, scenario?: Scenario) {
     const count = Math.floor(finite(config.count, DEFAULT_CONFIG.count, 1, MAX_AGENTS));
@@ -75,6 +79,7 @@ export class Simulation {
       if (this.navigation.urban) {
         this.courtesy = new DoorwayCourtesy(this.agents, this.navigation, this.grid, this.scenario.portals);
         this.headway = new DoorwayHeadway(this.agents, this.grid, this.navigation, this.scenario.portals);
+        this.setShopDeadlockRecovery(true);
       }
     }
     this.avoidance = avoidance ?? new Steering(this.scenario, this.navigation.urban, this.doorways?.cells, this.encounters, this.navigation, this.crossings);
@@ -89,6 +94,18 @@ export class Simulation {
       this.traffic?.setMode(this.settings.signalMode, this.time);
     }
     for (let i = 0; i < this.agents.count; i++) this.agents.preferredSpeed[i] = this.agents.speedFactor[i] * this.settings.walkingSpeed;
+    if (settings.walkingSpeed !== undefined || settings.avoidanceStrength !== undefined) this.setShopDeadlockRecovery(this.shopRecoveryEnabled);
+  }
+
+  setShopDeadlockRecovery(enabled: boolean): void {
+    this.shopRecoveryEnabled = enabled;
+    if (!enabled || this.settings.walkingSpeed === 0 || this.settings.avoidanceStrength === 0) {
+      this.shopRecovery = undefined;
+      return;
+    }
+    if (this.shopRecovery || !this.portals || !this.navigation.urban || this.scenario.id !== 'shibuya') return;
+    const target = this.scenario.portals!.findIndex(p => p.kind === 'door' && p.id === 'northwest-shop');
+    if (target >= 0) this.shopRecovery = new ShopDeadlockRecovery(this.agents, this.navigation, target, this.portals.shopMouths(target));
   }
   private readonly newPerson = (i: number): void => {
     const a = this.agents;
@@ -234,6 +251,8 @@ export class Simulation {
     const headway = socialAvoidance ? this.headway : undefined;
     if (this.portals) this.portals.yieldForEmergence = socialAvoidance;
     courtesy?.update(this.time);
+    const recovery = this.shopRecovery;
+    if (recovery) recovery.update(this.time, this.portals!.completedTrips[recovery.targetIndex]);
     if (this.avoidance instanceof Steering) this.avoidance.candidateChecks = 0;
     let totalSpeed = 0, stopped = 0, waiting = 0, crossing = 0;
     const b = this.scenario.bounds;
@@ -243,14 +262,16 @@ export class Simulation {
       const radius = a.radius[i] + 0.015;
       const sidewalkOnly = !!scramble && red && scramble.isSidewalk(read.x[i], read.z[i], radius);
       const clearance = this.crossings && (this.crossings.clearing[i] || (red && !sidewalkOnly)) ? this.crossings : undefined;
+      const order = clearance ? undefined : recovery?.order(i);
+      const passageAllowed = !order || order === 'pass';
       const tx = a.targetX[i] - read.x[i], tz = a.targetZ[i] - read.z[i];
       const previousPeer = this.encounters.gazeTarget[i];
       const passer = previousPeer >= 0 && a.generation[previousPeer] === this.encounters.gazeLife[i] ? previousPeer : -1;
       const passSide = this.encounters.passSide[i];
       this.encounters.advance(i, dt);
-      const yielding = !clearance && courtesy?.yielding(i) && !this.portals?.steppingAside(i);
+      const yielding = !order && !clearance && courtesy?.yielding(i) && !this.portals?.steppingAside(i);
       if (this.portals) {
-        if (!yielding && (!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
+        if (passageAllowed && !yielding && (!clearance || this.portals.inPassage(i)) && this.portals.move(i, dt, this.stepCount, this.grid, this.projected)) {
           this.crosswalkFlow?.reset(i);
           this.attention.settle(i, dt);
           const speed = this.writeMotion(i, dt, this.projected.x, this.projected.z);
@@ -268,8 +289,9 @@ export class Simulation {
       if (!clearance && this.doorways?.cells[this.grid.cells[i]]) this.portals?.guideSidewalk(i, this.direction);
       const crossingPace = clearance?.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) ?? 1;
       const steppingAside = this.portals?.steppingAside(i);
-      const waitingAtMouth = !clearance && !yielding && this.portals?.waitingAtMouth;
-      if (yielding) courtesy!.guide(i, this.direction);
+      const waitingAtMouth = !order && !clearance && !yielding && this.portals?.waitingAtMouth;
+      if (order) recovery!.guide(i, this.direction);
+      else if (yielding) courtesy!.guide(i, this.direction);
       else if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
       const routeX = this.direction.x, routeZ = this.direction.z;
       const waitingAtRed = sidewalkOnly && scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius);
@@ -278,8 +300,11 @@ export class Simulation {
       const speedScale = crossingPace * this.attention.update(i, dt, waitingAtRed, routeX, routeZ, allowHesitation, passer, passSide);
       const desiredSpeed = a.preferredSpeed[i] * speedScale;
       a.preferredVX[i] = this.direction.x * desiredSpeed; a.preferredVZ[i] = this.direction.z * desiredSpeed;
-      this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity, speedScale, sidewalkOnly);
-      if (!clearance && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
+      const stayOnSidewalk = sidewalkOnly || !!order;
+      this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity, speedScale, stayOnSidewalk);
+      if (order === 'wait' && !this.avoidance.yieldingAtCurb) {
+        this.velocity.x = 0; this.velocity.z = 0;
+      } else if (!order && !clearance && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
         headway?.limit(i, this.stepCount, this.time, this.direction, this.velocity);
       }
       let ax = (this.velocity.x - read.vx[i]) / 0.3, az = (this.velocity.z - read.vz[i]) / 0.3;
@@ -306,11 +331,11 @@ export class Simulation {
         }
       }
       if (scramble) {
-        scramble.constrain(read.x[i], read.z[i], x, z, radius, sidewalkOnly, this.projected);
+        scramble.constrain(read.x[i], read.z[i], x, z, radius, stayOnSidewalk, this.projected);
         x = this.projected.x; z = this.projected.z;
       }
       if (this.doorways) {
-        this.doorways.limit(i, x, z, dt, this.projected, sidewalkOnly);
+        this.doorways.limit(i, x, z, dt, this.projected, stayOnSidewalk);
         x = this.projected.x; z = this.projected.z;
       }
       if (scramble) {

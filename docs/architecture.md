@@ -69,6 +69,10 @@ The worker sends the confirmed `SignalState` (phase, remaining time, waiting and
 
 The five Shibuya storefronts use their mapped facade openings for both the rendered doors and the walking lanes. The demo openings range from 5.2 to 8.4 m wide. People going into a building approach the outer lanes from either side. People emerging from a building use the middle lanes and rejoin ordinary steering once their body has cleared the facade and the public sidewalk is reachable. The choice of a new pedestrian’s exit also takes account of slow-moving people directly outside the opening. A walker blocked while joining a lane on the sidewalk can release their place and approach again. Replacements still enter the scene only after another pedestrian has walked through a different portal.
 
+At the northwest shop, `ShopDeadlockRecovery` reviews the public approach once per simulation second. It tracks each shopper’s progress toward the entry lanes and counts completed trips into the shop. It intervenes when several shoppers stop gaining ground and admissions stop, or when a group near the front is persistently left behind while others enter.
+
+During an intervention the coordinator assigns a limited number of shoppers to each entry lane. It directs anyone blocking their approach to step aside on the sidewalk and asks the remaining shoppers to wait. A place stays reserved through passage until that shopper finishes their trip. A shopper unable to reach the lane can withdraw and retry. Every step goes through the existing speed, shoulder and walkable-surface checks. Once the original group clears or the local queue starts moving again, ordinary steering resumes. Twenty seconds without a completed entry also releases the orders so the coordinator can observe the queue afresh.
+
 ## Snapshot ABI
 
 Each pedestrian slot occupies **15 Float32 values / 60 bytes**.

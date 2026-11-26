@@ -37,6 +37,7 @@ const enum Stage { Walking, Aligning, Leaving, Entering }
 /** The only movement allowed past the walkable map follows an explicitly reserved lane. */
 export class PortalFlow {
   private readonly gates: Gate[];
+  readonly completedTrips: Uint32Array;
   private readonly sharedEntry: boolean;
   private readonly stage: Uint8Array;
   private readonly destination: Lane[];
@@ -63,6 +64,7 @@ export class PortalFlow {
     if (portals.length < 2 || portals.length !== nav.scenario.targets.length) {
       throw new Error('Portal scenarios require a passage for each destination and at least two passages.');
     }
+    this.completedTrips = new Uint32Array(portals.length);
     this.gates = portals.map((p, index) => {
       const dx = p.end.x - p.approach.x, dz = p.end.z - p.approach.z;
       const length = Math.hypot(dx, dz);
@@ -187,6 +189,7 @@ export class PortalFlow {
 
   inPassage(id: number): boolean { return this.stage[id] !== Stage.Walking; }
   steppingAside(id: number): boolean { return this.yieldForEmergence && this.stepAsideTime[id] > 0; }
+  shopMouths(portal: number): readonly Point2[] { return this.gates[portal].exits; }
 
   /** Verifies the assigned segment, including its endpoints, to Float32 storage precision. */
   inLane(id: number): boolean {
@@ -648,6 +651,7 @@ export class PortalFlow {
     const a = this.agents, write = a.next;
     for (let n = 0; n < this.transferCount; n++) {
       const id = this.transfers[n], exit = this.passage[id]!, entry = this.reservation[id]!;
+      this.completedTrips[exit.portal]++;
       this.unlinkExit(id, exit);
       entry.transferOwner = -1;
       entry.reserved--;
