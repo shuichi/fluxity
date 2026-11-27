@@ -77,6 +77,7 @@ export class Controls {
           <div class="app-status">
             <span class="runtime-status" id="runtime-status" data-kind="loading"><span class="status-dot"></span><span id="runtime-label">INITIALIZING</span></span>
             <span id="offline-status" role="status" hidden></span>
+            <button type="button" id="offline-update" title="Restart the simulation with the new version" hidden>Update &amp; reload</button>
           </div>
           <button class="icon-button mobile-controls" id="panel-toggle" aria-label="Toggle simulation controls" aria-controls="control-panel" aria-expanded="true">${icons.sliders}</button>
         </div>

@@ -1,5 +1,5 @@
-/** Show readiness only after the worker has finished caching the production build. */
-export async function registerOffline(status: HTMLElement): Promise<void> {
+/** Track offline readiness and let the user choose when to restart into a saved update. */
+export async function registerOffline(status: HTMLElement, updateButton: HTMLButtonElement): Promise<void> {
   const scriptURL = new URL(import.meta.env.BASE_URL + 'sw.js', document.baseURI).href;
   const ready = 'Ready for offline use';
   const saving = 'Saving for offline use…';
@@ -19,28 +19,51 @@ export async function registerOffline(status: HTMLElement): Promise<void> {
     const workers = navigator.serviceWorker;
     const hasController = () => workers.controller?.scriptURL === scriptURL;
     show(hasController() ? ready : saving);
-    const registration = await workers.register(scriptURL);
+    const current = hasController() ? await workers.getRegistration(scriptURL) : undefined;
+    const registration = current ?? await workers.register(scriptURL, { updateViaCache: 'none' });
+    let requested: ServiceWorker | null = null;
+
+    function render(): void {
+      const usable = hasController() || registration.active?.state === 'activated';
+      updateButton.hidden = !(usable && registration.waiting);
+      if (!updateButton.hidden) show('Update available');
+      else if (registration.installing && usable) show('Downloading update…');
+      else if (usable) show(ready);
+      else if (registration.installing || registration.waiting || registration.active) show(saving);
+      else show(failed);
+    }
 
     function track(): void {
-      const worker = registration.active ?? registration.waiting ?? registration.installing;
-      function report(): void {
-        if (worker?.state === 'activated' || hasController()) {
-          show(ready);
-          registration.removeEventListener('updatefound', track);
-          worker?.removeEventListener('statechange', report);
-        } else if (!worker || worker.state === 'redundant') {
-          show(failed);
-        } else {
-          show(saving);
-        }
-      }
-      worker?.addEventListener('statechange', report);
-      report();
+      const worker = registration.installing ?? registration.waiting ?? registration.active;
+      worker?.addEventListener('statechange', render);
+      render();
+    }
+
+    function checkForUpdate(): void {
+      if (document.hidden || !registration.active || registration.installing || registration.waiting) return;
+      // A disconnected launch can continue to use the active release.
+      void registration.update().catch(() => {});
     }
     registration.addEventListener('updatefound', track);
+    updateButton.addEventListener('click', () => {
+      requested = registration.waiting;
+      requested?.postMessage({ type: 'apply-update' });
+    });
+    workers.addEventListener('message', event => {
+      if (requested && event.source === requested && event.data?.type === 'other-windows-open') {
+        requested = null;
+        show('Close other Fluxity windows and retry');
+      }
+    });
+    workers.addEventListener('controllerchange', () => {
+      if (requested && workers.controller === requested) window.location.reload();
+      else render();
+    });
+    document.addEventListener('visibilitychange', checkForUpdate);
+    window.addEventListener('online', checkForUpdate);
     track();
+    checkForUpdate();
   } catch (error) {
-    // Re-registering can fail offline even when an existing worker serves this launch.
     if (status.textContent !== ready) show(failed);
     console.warn('[Fluxity] Could not register the offline worker.', error);
   }

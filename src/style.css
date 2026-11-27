@@ -197,6 +197,15 @@ button:active:not(:disabled) {
   text-align:center;
 }
 
+#offline-update {
+  background:transparent;
+  color:var(--green);
+  font-size:11px;
+  padding:2px 6px;
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
+
 .runtime-status {
   display:flex;
   align-items:center;

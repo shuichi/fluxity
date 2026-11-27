@@ -13,7 +13,21 @@ self.addEventListener('install', event => {
   })());
 });
 
-// Let existing sessions finish with their matching simulation worker and map data.
+// A tab can opt into a reload once the entire new build is saved. Keep other
+// running simulations on their matching code and map data until they close.
+self.addEventListener('message', event => {
+  const client = event.source;
+  if (event.data?.type !== 'apply-update' || client?.type !== 'window' || !client.url.startsWith(scope)) return;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (windows.some(other => other.id !== client.id && other.url.startsWith(scope))) {
+      client.postMessage({ type: 'other-windows-open' });
+      return;
+    }
+    await self.skipWaiting();
+  })());
+});
+
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const names = await caches.keys();

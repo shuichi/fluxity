@@ -7,5 +7,6 @@ if (!root) throw new Error('Application root is missing.');
 const app = new App(root);
 void app.start();
 const offlineStatus = root.querySelector<HTMLElement>('#offline-status');
-if (import.meta.env.PROD && offlineStatus) void registerOffline(offlineStatus);
+const updateButton = root.querySelector<HTMLButtonElement>('#offline-update');
+if (import.meta.env.PROD && offlineStatus && updateButton) void registerOffline(offlineStatus, updateButton);
 if (import.meta.hot) import.meta.hot.dispose(() => app.destroy());
