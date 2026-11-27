@@ -24,7 +24,16 @@ npm run benchmark  # 広場のCPUシミュレーション性能測定
 npm run benchmark:shibuya  # PLATEAU渋谷、青固定、1,000 / 5,000人
 ```
 
-推奨環境は、ハードウェアアクセラレーションが有効なWindows/macOSの最新ChromeまたはEdgeです。WebGPUを実装した他のブラウザでも利用できます。`localhost` / `127.0.0.1` またはHTTPSのsecure contextが必要です。GPU・ドライバ・ブラウザのポリシーによって利用できない場合は、画面に原因と推奨環境を表示します。WebGLへの代替実装はありません。
+3D描画にはWebGPU対応のGPUとブラウザが必要です。Windows/macOSではハードウェアアクセラレーションを有効にしたChromeまたはEdge、MacではSafari 26以降が利用できます。`localhost` / `127.0.0.1` またはHTTPSで開いてください。[SafariのWebGPU対応について](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/#webgpu)
+
+## デスクトップへのインストールとオフライン利用
+
+オンラインで本番版のトップページを開き、使っているブラウザからFluxityを追加します。ローカルで試す場合は `npm run build` の後に `npm run preview` を実行し、表示されたURLを開いてください。
+
+- **MacのSafari**（macOS Sonoma 14以降）では「ファイル」→「Dockに追加」を選びます。SafariとWebアプリは保存領域が別なので、追加したらオンラインのままDockからFluxityを一度開いてください。[Appleの手順](https://support.apple.com/ja-jp/104996)
+- **Chrome**では、右上の「︙」→「キャスト、保存、共有」→「ページをアプリとしてインストール」を選びます。[Googleの手順](https://support.google.com/chrome/answer/9658361?hl=ja)
+
+アプリの画面右上に **Ready for offline use** と表示されたら準備完了です。次回からはネット接続がなくても起動でき、全5シナリオ、渋谷の写真表示、アルゴリズム解説と比較動画を利用できます。初回に保存するデータは約57 MBです。**Offline setup incomplete** と表示された場合は、接続と端末の空き容量を確認して再読み込みしてください。
 
 ## GitHub Pagesへの公開
 
