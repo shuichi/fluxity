@@ -91,7 +91,9 @@ it('skips degenerate or narrower-than-body markings and leaves the ordinary trip
 it.each([
   { count: 1, turnRed: false }, { count: 11, turnRed: false }, { count: 11, turnRed: true },
 ])('keeps the north zebra track or rejoins after passing (count=$count, red=$turnRed)', ({ count, turnRed }) => {
-  const sim = new Simulation({ ...DEFAULT_CONFIG, count, seed: 0, signalMode: 'pedestrian' }, undefined,
+  // These starting positions reproduce a particular baseline encounter at the paint edge.
+  const sim = new Simulation({ ...DEFAULT_CONFIG, count, seed: 0, signalMode: 'pedestrian',
+    crowdModel: 'baseline', crowdPreset: 'none' }, undefined,
     { ...shibuya, portals: undefined });
   const a = sim.agents, radius = 0.25, clearance = radius + 0.015;
   // One eastbound walker on the outside track; two staggered, body-clear
@@ -176,12 +178,15 @@ it('approaches the diagonal on the forecourt sidewalk without stepping onto the 
 
 it('waits to select the next track while the walker is on a different zebra', () => {
   const nav = new Navigation(shibuya), flow = new CrosswalkFlow(nav, 1, 42);
-  const x = 22.3, z = 16.33, radius = 0.27, direction = { x: 0, z: 0 };
+  const x = 22, z = 12, radius = 0.27, direction = { x: 0, z: 0 };
   expect(nav.urban!.isSidewalk(x, z, radius)).toBe(false);
+  expect(nav.urban!.occupiesCrossing(x, z, radius)).toBe(true);
   // This point is on the east zebra. The southwest shop's trip will later
   // use the south zebra, while the east shop's trip can already use this one.
   const southwest = shibuya.portals!.findIndex(p => p.id === 'southwest-shop');
   const east = shibuya.portals!.findIndex(p => p.id === 'east-shop');
+  expect(flow.plannedRoute(0, x, z, southwest)).toBe(-2);
   expect(flow.guide(0, 0, x, z, southwest, radius, direction)).toBe(false);
   expect(flow.guide(0, 0, x, z, east, radius, direction)).toBe(true);
+  expect(flow.activeCrossing(0)).toBe(-3);
 });

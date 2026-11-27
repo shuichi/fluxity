@@ -142,6 +142,17 @@
           }
         ]
       ]
+    },
+    {
+      "rings": [[
+        { "x": 10, "z": 23 },
+        { "x": 13.5, "z": 17 },
+        { "x": 19, "z": 14.5 },
+        { "x": 25, "z": 15.5 },
+        { "x": 24, "z": 20 },
+        { "x": 16, "z": 26 },
+        { "x": 10, "z": 26 }
+      ]]
     }
   ],
   "blockedAreas": [
@@ -229,6 +240,7 @@
   "notes": [
     "Crosswalk rectangles extend into sidewalks to make continuous walkable surfaces; zebra paint is clipped to the carriageway.",
     "Hachiko forecourt pedestrian area and a small planting exclusion are conservative manual overlays; PLATEAU building footprints take precedence.",
+    "The second pedestrian area covers the paved corner between the curb landings and the forecourt, estimated from the same GSI seamless aerial tiles as the crossing markings.",
     "Demo doorways align with ground-floor facade planes. Each end is 0.8 m behind the wall. The north street continues on rendered pavement beyond the walking area.",
     "Initial routes mix four trips across the junction with one local storefront trip per zone.",
     "Ground is flattened. Station interiors, decks, stairs and underground passages are excluded.",

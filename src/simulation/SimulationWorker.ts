@@ -29,7 +29,7 @@ function publish(): void {
     type: 'snapshot', generation, buffer, count: simulation.agents.count, vehicleCapacity: simulation.vehicleCapacity,
     step: simulation.stepCount, simulationTime: simulation.time, stepMs: lastStepMs,
     meanSpeed: simulation.stats.meanSpeed, congestion: simulation.stats.congestion,
-    signal: simulation.signal,
+    signal: simulation.signal, subjectId: simulation.activities?.subjectId,
   }, [buffer]);
 }
 

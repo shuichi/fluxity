@@ -43,6 +43,7 @@ export class App {
   private scenarioRequest = 0;
   private sceneReady = false;
   private followedPerson?: PickedPerson;
+  private trackedSubject?: PickedPerson;
   private pickRequest = 0;
   private canPickPerson = false;
   private paused = false;
@@ -100,6 +101,22 @@ export class App {
         if (view === 'reset') this.renderer?.camera.reset();
         else this.renderer?.camera.setView(view);
       },
+      onFrameSubject: () => {
+        if (this.trackedSubject) {
+          this.trackedSubject = undefined;
+          this.syncSubjectButton();
+          return;
+        }
+        const frame = this.timeline.current;
+        const id = frame?.message.subjectId;
+        if (!this.renderer || !frame || id === undefined || id < 0 || id >= frame.message.count) return;
+        this.leavePersonView();
+        const offset = id * SNAPSHOT_STRIDE;
+        this.trackedSubject = { id, life: frame.data[offset + 11] };
+        this.renderer.camera.frameParticipant(frame.data[offset], frame.data[offset + 1], frame.data[offset + 2]);
+        this.controls.setCameraActive('street');
+        this.syncSubjectButton();
+      },
       onReturnView: () => this.leavePersonView(),
       onBenchmark: () => this.startBenchmark(),
     });
@@ -136,6 +153,8 @@ export class App {
       if (request !== this.pickRequest || !person
         || !this.canFollow(person, this.timeline.alpha(performance.now(), this.config.simulationSpeed))) return;
       this.followedPerson = person;
+      this.trackedSubject = undefined;
+      this.syncSubjectButton();
       this.canPickPerson = false;
       this.controls.setPersonView(true);
     } catch (error) {
@@ -153,9 +172,18 @@ export class App {
     // A GPU read from the previous view or crowd must never select a person in its replacement.
     this.pickRequest++;
     this.canPickPerson = false;
+    if (this.trackedSubject) {
+      this.trackedSubject = undefined;
+      this.syncSubjectButton();
+    }
     if (!this.followedPerson) return;
     this.followedPerson = undefined;
     this.controls.setPersonView(false);
+  }
+
+  private syncSubjectButton(): void {
+    const id = this.timeline.current?.message.subjectId;
+    this.controls.setSubjectAvailable(id !== undefined && id >= 0, !!this.trackedSubject);
   }
 
   private configure(patch: Partial<SimulationConfig>, reset: boolean): void {
@@ -216,6 +244,7 @@ export class App {
     this.generation++;
     this.stats.count = this.config.count;
     this.stats.simulationTime = 0;
+    this.controls.setSubjectAvailable(false);
     this.controls.setSignal(undefined);
     this.controls.setStatus('Preparing the crowd', 'loading');
     this.send({ type: 'init', config: this.config, generation: this.generation, paused: this.paused || document.hidden });
@@ -233,6 +262,12 @@ export class App {
       this.stats.congestion = message.congestion;
       this.stats.simulationTime = message.simulationTime;
       this.controls.setSignal(message.signal, message.simulationTime);
+      const tracked = this.trackedSubject;
+      if (tracked) {
+        const offset = tracked.id * SNAPSHOT_STRIDE, data = this.timeline.current!.data;
+        if (data[offset + 11] !== tracked.life || data[offset + 12] <= 0) this.trackedSubject = undefined;
+      }
+      this.syncSubjectButton();
       if (first) {
         this.controls.setStatus('WebGPU active', 'ready');
         if (this.benchmark) this.benchmark.startedAt = performance.now();
@@ -255,6 +290,11 @@ export class App {
         const person = this.followedPerson;
         const alpha = this.timeline.alpha(now, this.config.simulationSpeed);
         if (person && !this.canFollow(person, alpha)) this.leavePersonView();
+        if (this.trackedSubject) {
+          const s = this.trackedSubject.id * SNAPSHOT_STRIDE, target = this.renderer.camera.target;
+          target[0] = previous.data[s] + (current.data[s] - previous.data[s]) * alpha;
+          target[2] = previous.data[s + 1] + (current.data[s + 1] - previous.data[s + 1]) * alpha;
+        }
         const render = this.renderer.render(previous.data, current.data, current.message.count, alpha, {
             quality: this.quality, debug: this.debug, signal: current.message.signal, simulationTime: current.message.simulationTime,
             followedId: this.followedPerson?.id,

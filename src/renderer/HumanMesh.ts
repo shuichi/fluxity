@@ -29,6 +29,8 @@ export function createHumanMesh(lod: number) {
     part(1, 0, 1.491, 1.534, 0.102, 0.033, 0.039);
   }
   const upperArmWidth = HUMAN_SHOULDER_BREADTH - 2 * shoulderX;
+  // The shader unfolds this handset at the right hand as the arm rises.
+  if (lod < 2) mesh.box(shoulderX, 0.684, 0.029, 0.076, 0.147, 0.012, [13]);
   for (const side of [-1, 1]) {
     const right = side === 1, ax = side * shoulderX, lx = side * hipX;
     const fingertip = 0.623;

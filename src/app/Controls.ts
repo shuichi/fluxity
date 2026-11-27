@@ -1,4 +1,4 @@
-import type { CameraView, Quality, ScenarioId, SignalMode, SignalState, SimulationConfig } from '../types';
+import type { CameraView, CrowdModel, CrowdPreset, Quality, ScenarioId, SignalMode, SignalState, SimulationConfig } from '../types';
 import { SIGNAL_CYCLE_SECONDS } from '../simulation/TrafficSignal';
 import { pedestrianLamp } from '../renderer/TrafficLights';
 
@@ -13,6 +13,7 @@ export interface ControlCallbacks {
   onAppearance: (photographic: boolean) => void;
   onDebug: (enabled: boolean) => void;
   onCamera: (view: CameraView | 'reset') => void;
+  onFrameSubject: () => void;
   onReturnView: () => void;
   onBenchmark: () => void;
 }
@@ -110,6 +111,12 @@ export class Controls {
           <div class="playback-row"><button class="primary-button simulation-control" id="pause-button">${icons.pause}<span id="pause-label">Pause simulation</span></button><button class="icon-button reset-button simulation-control" id="reset-button" aria-label="Reset simulation with current seed" title="Reset simulation">${icons.reset}</button></div>
           <section class="control-section behavior-section">
             <div class="section-heading"><span class="eyebrow">MOVEMENT</span><span class="tiny-label">LIVE CONTROLS</span></div>
+            <div id="shibuya-behavior" class="shibuya-behavior">
+              <div class="field-row"><label for="crowd-preset">Crossing scene</label><div class="select-wrap compact-select"><select class="simulation-control" id="crowd-preset"><option value="none">Ordinary</option><option value="runner">Runner</option><option value="selfie">Selfie</option><option value="group">Group</option><option value="mixed">Mixed</option></select></div></div>
+              <div class="field-row"><label for="crowd-model">Walking model</label><div class="select-wrap compact-select"><select class="simulation-control" id="crowd-model"><option value="baseline">Baseline</option><option value="enhanced">Enhanced</option></select></div></div>
+              <div class="field-row" id="density-row"><label for="density-guidance">Density-guided entry</label><label class="switch"><input class="simulation-control" id="density-guidance" type="checkbox"/><span class="switch-track"></span></label></div>
+              <button class="subject-button" id="frame-subject" aria-pressed="false" disabled>Track participant</button>
+            </div>
             <div class="range-field"><div class="field-row"><label for="simulation-speed">Time scale</label><output id="simulation-speed-value" for="simulation-speed">1.0×</output></div><input class="simulation-control" id="simulation-speed" type="range" min="0.25" max="2" step="0.25" value="1"/><div class="range-captions"><span>0.25×</span><span>2×</span></div></div>
             <div class="range-field"><div class="field-row"><label for="walking-speed">Walking speed</label><output id="walking-speed-value" for="walking-speed">1.35 <span>m/s</span></output></div><input class="simulation-control" id="walking-speed" type="range" min="0.3" max="3" step="0.05" value="1.35"/><div class="range-captions"><span>Stroll</span><span>Run</span></div></div>
             <div class="range-field"><div class="field-row"><label for="avoidance">Personal space</label><output id="avoidance-value" for="avoidance">1.0×</output></div><input class="simulation-control" id="avoidance" type="range" min="0" max="2.5" step="0.1" value="1"/><div class="range-captions"><span>Relaxed</span><span>Cautious</span></div></div>
@@ -175,6 +182,16 @@ export class Controls {
       this.setCameraActive('perspective');
       callbacks.onConfig({ scenario }, true);
     });
+    on(this.get('crowd-preset'), 'change', () => callbacks.onConfig({
+      crowdPreset: this.get<HTMLSelectElement>('crowd-preset').value as CrowdPreset,
+    }, true));
+    on(this.get('crowd-model'), 'change', () => callbacks.onConfig({
+      crowdModel: this.get<HTMLSelectElement>('crowd-model').value as CrowdModel,
+    }, true));
+    on(this.get('density-guidance'), 'change', () => callbacks.onConfig({
+      densityGuidance: this.get<HTMLInputElement>('density-guidance').checked,
+    }, true));
+    on(this.get('frame-subject'), 'click', callbacks.onFrameSubject);
     container.querySelectorAll<HTMLButtonElement>('[data-count]').forEach(button => on(button, 'click', () => {
       const count = Number(button.dataset.count);
       this.setConfig({ ...this.config, count });
@@ -293,6 +310,12 @@ export class Controls {
     this.get('map-credit').hidden = config.scenario !== 'shibuya';
     this.get('appearance-controls').hidden = config.scenario !== 'shibuya';
     this.get('signal-controls').hidden = config.scenario !== 'shibuya';
+    this.get('shibuya-behavior').hidden = config.scenario !== 'shibuya';
+    this.get<HTMLSelectElement>('crowd-preset').value = config.crowdPreset ?? 'none';
+    this.get<HTMLSelectElement>('crowd-model').value = config.crowdModel ?? 'baseline';
+    this.get<HTMLInputElement>('density-guidance').checked = !!config.densityGuidance;
+    this.get('density-row').hidden = config.crowdModel !== 'enhanced';
+    this.get('frame-subject').hidden = !config.crowdPreset || config.crowdPreset === 'none';
     this.root.classList.toggle('signal-scene', config.scenario === 'shibuya');
     this.root.querySelectorAll<HTMLButtonElement>('[data-signal-mode]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.signalMode === config.signalMode));
@@ -300,6 +323,12 @@ export class Controls {
     if (changedScenario || config.scenario !== 'shibuya') this.setSignal(undefined);
     this.get('loading-overlay').querySelector('h2')!.textContent = config.scenario === 'shibuya' ? 'Setting Shibuya in motion' : 'Setting the city in motion';
     this.updateRanges();
+  }
+
+  setSubjectAvailable(available: boolean, tracking = false): void {
+    const button = this.get<HTMLButtonElement>('frame-subject');
+    button.disabled = !available && !tracking;
+    if (button.getAttribute('aria-pressed') !== String(tracking)) button.setAttribute('aria-pressed', String(tracking));
   }
 
   /** Phase and counts are taken from worker snapshots, including manual updates while paused. */

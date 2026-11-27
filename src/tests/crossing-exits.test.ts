@@ -13,7 +13,7 @@ function polygon(vertices: [number, number][]): Polygon2 {
 
 it('finishes a stalled crossing in one stride when a shoulder is still over the curb', () => {
   const nav = new Navigation(shibuya), exits = new CrossingExits(nav, new SpatialGrid(shibuya.bounds, 1));
-  const x = 19.23, z = 16.08, radius = 0.27;
+  const x = 19.2, z = 12.5, radius = 0.27;
   const landing = { x: 16.375, z: 14.125 }, next = { x: 0, z: 0 };
   expect(nav.scramble!.isSidewalk(x, z)).toBe(true);
   expect(nav.scramble!.isSidewalk(x, z, radius)).toBe(false);
@@ -75,7 +75,9 @@ it('picks the nearer bank on a diagonal even a few centimeters from the midpoint
 
 it("uses the closest adjacent curb on Shibuya's shared diagonal and straight crossing approach", () => {
   const nav = new Navigation(shibuya), exits = new CrossingExits(nav, new SpatialGrid(shibuya.bounds, 1));
-  const x = 19.23, z = 16.08, radius = 0.27, landing = { x: 0, z: 0 }, waypoint = { x: 0, z: 0 };
+  const x = 19.2, z = 12.5, radius = 0.27, landing = { x: 0, z: 0 }, waypoint = { x: 0, z: 0 };
+  expect(nav.scramble!.isSidewalk(x, z)).toBe(true);
+  expect(nav.scramble!.isSidewalk(x, z, radius)).toBe(false);
   expect(exits.choose(x, z, radius, landing, waypoint)).toBe(true);
   expect(nav.scramble!.isSidewalk(landing.x, landing.z, radius)).toBe(true);
   expect(Math.hypot(landing.x - x, landing.z - z)).toBeLessThan(0.3);

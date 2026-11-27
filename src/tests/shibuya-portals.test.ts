@@ -8,6 +8,17 @@ import { PortalTripDemand } from '../simulation/PortalTripDemand';
 import { PolygonRegion } from '../simulation/UrbanGeometry';
 
 describe('Shibuya entrances', () => {
+  it('connects the Hachiko landings to the forecourt across the paved corner', () => {
+    const sidewalk = new PolygonRegion(shibuya.urbanMap!.sidewalks);
+    // Walk fully on the sidewalk from the western, diagonal and northern landings.
+    for (const [x, z] of [[10.5, 23], [14, 17], [22, 15]]) {
+      expect(sidewalk.lineInside(x, z, 20, 24, 0.34)).toBe(true);
+    }
+    expect(sidewalk.contains(29, 26)).toBe(false); // Planting bed.
+    expect(sidewalk.contains(32, 45)).toBe(false); // Forecourt building.
+    expect(sidewalk.contains(9, 40)).toBe(false); // Beyond the mapped opening.
+  });
+
   it('keeps the full passage width on reachable pavement up to its authored facade', () => {
     const nav = new Navigation(shibuya), map = shibuya.urbanMap!;
     const buildings = new PolygonRegion(map.buildingFootprints), roads = new PolygonRegion(map.roads);

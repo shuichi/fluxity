@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG } from '../types';
+import { DEFAULT_CONFIG, FIXED_DT } from '../types';
 import { legacyShibuya, shibuya } from '../scenarios/shibuya';
 import { Navigation } from '../simulation/Navigation';
 import { Simulation } from '../simulation/Simulation';
 import { Steering } from '../simulation/Steering';
 import { doorwayRadius } from '../simulation/DoorwayClearance';
+import { ActivityRole } from '../simulation/ShibuyaActivities';
 
 function invalidPositions(simulation: Simulation): number {
   const a = simulation.agents;
@@ -14,7 +15,14 @@ function invalidPositions(simulation: Simulation): number {
     if (!simulation.navigation.isFree(x, z, a.radius[i]) && !simulation.isInPortalLane(i) &&
       !simulation.navigation.urban!.canPassOnCrossing(x, z, a.radius[i])) invalid++;
     if (!Number.isFinite(a.current.x[i] + a.current.z[i] + a.current.heading[i])) invalid++;
-    if (Math.hypot(a.current.vx[i], a.current.vz[i]) > a.preferredSpeed[i] * 1.12 + 0.01) invalid++;
+    let cap = a.preferredSpeed[i] * 1.12;
+    const activities = simulation.activities, role = activities?.role[i];
+    if (activities && (role === ActivityRole.Runner || role === ActivityRole.Companion)) {
+      const pace = role === ActivityRole.Companion ? 1.32 : Math.max(1, activities.pace[i]);
+      // A runner ending a sprint can shed up to 3.8 m/s² towards the new cap.
+      cap = Math.max(cap * pace, Math.hypot(a.next.vx[i], a.next.vz[i]) - 3.8 * FIXED_DT);
+    }
+    if (Math.hypot(a.current.vx[i], a.current.vz[i]) > cap + 0.01) invalid++;
   }
   return invalid;
 }
@@ -33,8 +41,8 @@ describe('PLATEAU Shibuya pedestrian map', () => {
     expect(disconnected).toBe(0);
   });
 
-  it('holds 1,000 pedestrians on sidewalks at red and releases real crossing flows on green', () => {
-    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1000, signalMode: 'allRed' });
+  it.each(['none', 'mixed'] as const)('holds 1,000 pedestrians on sidewalks at red and releases crossing flows on green (%s)', crowdPreset => {
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 1000, signalMode: 'allRed', crowdPreset });
     const a = simulation.agents, geometry = simulation.navigation.scramble!;
     for (let step = 0; step < 120; step++) simulation.step();
     let incursions = 0;
@@ -58,7 +66,7 @@ describe('PLATEAU Shibuya pedestrian map', () => {
   }, 15000);
 
   it('completes repeated trips from the original five spawn zones with a constant population', () => {
-    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 5, signalMode: 'pedestrian' });
+    const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 5, signalMode: 'pedestrian', crowdPreset: 'none' });
     for (let step = 0; step < 6000; step++) {
       simulation.step();
       if (step % 100 === 0) {

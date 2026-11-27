@@ -47,6 +47,7 @@ export function createShibuyaScenario(shopLayout: 'five' | 'expanded', streetLay
   return {
     ...legacyShibuya,
     roadMarkings: 'shibuya',
+    forecourtRouting: true,
     vehicleLanes: SHIBUYA_VEHICLE_LANES,
     portals: selected,
     targets: selected.map(p => p.approach),

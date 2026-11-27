@@ -20,7 +20,7 @@ struct Scene {
   fog: vec4<f32>,
 };
 struct Instance {
-  positionHeading: vec4<f32>,
+  groundPoseHeading: vec4<f32>, // x, selfie pose, z, heading
   style: vec4<f32>,
   tint: vec4<f32>,
   extra: vec4<f32>,
@@ -61,6 +61,8 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
 @vertex fn vertexMain(input: VertexInput) -> VertexOutput {
   let agent = agents[input.instance];
   let part = u32(input.part + 0.1);
+  let phone = part == 13u;
+  let photo = agent.groundPoseHeading.y;
   let speed = agent.style.y;
   let phase = agent.style.z;
   let appearance = agent.style.w;
@@ -69,13 +71,13 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
   let stride = (walkStride + running * runExtraStride) * movement;
   var p = input.position;
   var n = input.normal;
-  let side = select(-1.0, 1.0, part == 4u || part == 6u || part == 8u || part == 10u || part == 12u);
+  let side = select(-1.0, 1.0, part == 4u || part == 6u || part == 8u || part == 10u || part == 12u || phone);
   let cycle = sin(phase + select(0.0, 3.14159265, side > 0.0));
   if (part == 1u || part == 2u) {
     let pivot = vec3<f32>(0.0, neck, 0.0);
     p = rotateY(p - pivot, agent.extra.w) + pivot;
     n = rotateY(n, agent.extra.w);
-  } else if (part >= 7u) {
+  } else if (part >= 7u && !phone) {
     let hipPivot = vec3<f32>(side * hipX, hip, 0.0);
     let kneePivot = vec3<f32>(side * hipX, knee, 0.0);
     let upperAngle = cycle * stride;
@@ -92,11 +94,17 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
     }
     p = aroundX(p, hipPivot, upperAngle);
     n = rotateX(n, upperAngle);
-  } else if (part >= 3u && part <= 6u) {
+  } else if ((part >= 3u && part <= 6u) || phone) {
     let shoulderPivot = vec3<f32>(side * shoulderX, shoulder, 0.0);
     let elbowPivot = vec3<f32>(side * shoulderX, elbow, 0.0);
-    let armAngle = -cycle * stride * 0.76;
-    let elbowAngle = -(0.10 + running * 0.8 + max(0.0, cycle) * 0.18) * movement;
+    let reach = select(0.0, photo, side > 0.0);
+    let armAngle = mix(-cycle * stride * 0.76, -1.57, reach);
+    let elbowAngle = mix(-(0.10 + running * 0.8 + max(0.0, cycle) * 0.18) * movement, -0.50, reach);
+    if (phone) {
+      let grip = vec3<f32>(shoulderX, 0.65, 0.029);
+      p = grip + rotateX(p - grip, -armAngle - elbowAngle) * smoothstep(0.03, 0.32, photo);
+      n = rotateX(n, -armAngle - elbowAngle);
+    }
     if (part >= 5u) {
       p = aroundX(p, elbowPivot, elbowAngle);
       n = rotateX(n, elbowAngle);
@@ -104,7 +112,7 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
     p = aroundX(p, shoulderPivot, armAngle);
     n = rotateX(n, armAngle);
   }
-  if (part < 7u && agent.tint.w != 0.0) {
+  if ((part < 7u || phone) && agent.tint.w != 0.0) {
     // A light contact rolls the upper body away from the other walker about the hips.
     let angle = agent.tint.w * leanAngle;
     let c = cos(angle); let s = sin(angle);
@@ -121,8 +129,8 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
   p.x *= width;
   p *= agent.style.x;
   n.x /= width;
-  p = rotateY(p, agent.positionHeading.w) + agent.positionHeading.xyz;
-  n = rotateY(n, agent.positionHeading.w);
+  p = rotateY(p, agent.groundPoseHeading.w) + vec3<f32>(agent.groundPoseHeading.x, 0.0, agent.groundPoseHeading.z);
+  n = rotateY(n, agent.groundPoseHeading.w);
 
   let skin = mix(vec3<f32>(0.49, 0.31, 0.21), vec3<f32>(0.91, 0.70, 0.51), fract(appearance * 0.381966));
   let hair = mix(vec3<f32>(0.12, 0.12, 0.10), vec3<f32>(0.47, 0.33, 0.19), fract(appearance * 0.754878));
@@ -131,6 +139,7 @@ fn aroundX(v: vec3<f32>, center: vec3<f32>, a: f32) -> vec3<f32> {
   if (part == 2u) { color = hair; }
   if (part >= 7u) { color = mix(vec3<f32>(0.17, 0.22, 0.23), vec3<f32>(0.44, 0.42, 0.35), fract(appearance * 0.414214)); }
   if (part >= 11u) { color = vec3<f32>(0.16, 0.17, 0.15); }
+  if (phone) { color = select(vec3<f32>(0.13, 0.16, 0.18), vec3<f32>(0.50, 0.61, 0.67), input.normal.z < -0.5); }
   if (scene.settings.x > 0.5) {
     color = select(select(vec3<f32>(0.88,0.52,0.23),vec3<f32>(0.31,0.58,0.84),agent.extra.y > 0.5),vec3<f32>(0.48,0.72,0.37),agent.extra.y > 1.5);
   }

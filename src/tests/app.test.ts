@@ -11,10 +11,10 @@ const harness = vi.hoisted(() => ({
     setPaused: vi.fn(), setConfig: vi.fn(), setStatus: vi.fn(),
     renderBenchmark: vi.fn(), setBenchmarkRunning: vi.fn(), setBenchmarkStatus: vi.fn(),
     showError: vi.fn(), destroy: vi.fn(),
-    setSignal: vi.fn(), setPersonView: vi.fn(),
+    setSignal: vi.fn(), setPersonView: vi.fn(), setCameraActive: vi.fn(), setSubjectAvailable: vi.fn(),
   },
   renderer: {
-    setScenario: vi.fn(), destroy: vi.fn(), camera: { reset: vi.fn(), setView: vi.fn() },
+    setScenario: vi.fn(), destroy: vi.fn(), camera: { reset: vi.fn(), setView: vi.fn(), frameParticipant: vi.fn(), target: new Float32Array(3) },
     setPhotographicAppearance: vi.fn(),
     canPlacePersonCamera: vi.fn(() => true),
     pickPerson: vi.fn<(x: number, y: number) => Promise<PickedPerson | null>>(),
@@ -34,6 +34,8 @@ vi.mock('../app/Controls', () => ({
     readonly setConfig = harness.controls.setConfig;
     readonly setStatus = harness.controls.setStatus;
     readonly setSignal = harness.controls.setSignal;
+    readonly setSubjectAvailable = harness.controls.setSubjectAvailable;
+    readonly setCameraActive = harness.controls.setCameraActive;
     readonly setPersonView = harness.controls.setPersonView;
     readonly renderBenchmark = harness.controls.renderBenchmark;
     readonly setBenchmarkRunning = harness.controls.setBenchmarkRunning;
@@ -115,6 +117,28 @@ describe('application / worker integration', () => {
     frame();
   });
   afterEach(() => { app.destroy(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('frames the featured participant in the current replay and drops the old subject on reset', () => {
+    const worker = FakeWorker.instance;
+    const snapshot = worker.snapshot(3);
+    snapshot.subjectId = 7;
+    new Float32Array(snapshot.buffer).set([4, 8, 0.5], 7 * SNAPSHOT_STRIDE);
+    worker.emit(snapshot);
+    controls().onFrameSubject();
+    expect(harness.renderer.camera.frameParticipant).toHaveBeenCalledWith(4, 8, 0.5);
+    const moved = worker.snapshot(4);
+    new Float32Array(moved.buffer).set([6, 9], 7 * SNAPSHOT_STRIDE);
+    new Float32Array(moved.buffer)[7 * SNAPSHOT_STRIDE + 12] = 1;
+    worker.emit(moved);
+    frame(70);
+    expect(Array.from(harness.renderer.camera.target)).toEqual([6, 0, 9]);
+    expect(harness.controls.setSubjectAvailable).toHaveBeenLastCalledWith(false, true);
+    controls().onConfig({ crowdPreset: 'runner', crowdModel: 'baseline' }, true);
+    expect(worker.latestInit().config).toMatchObject({ seed: 42, crowdPreset: 'runner', crowdModel: 'baseline' });
+    expect(harness.controls.setSubjectAvailable).toHaveBeenLastCalledWith(false);
+    controls().onFrameSubject();
+    expect(harness.renderer.camera.frameParticipant).toHaveBeenCalledTimes(1);
+  });
 
   it('follows the picked person across snapshots and returns without resetting the camera or crowd', async () => {
     const worker = FakeWorker.instance;

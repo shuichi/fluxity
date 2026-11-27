@@ -97,7 +97,10 @@ export class InstanceBuffer {
       this.levels[id] = lod;
       this.counts[lod]++;
       const p = id * INSTANCE_FLOATS;
-      this.scratch[p] = x; this.scratch[p + 1] = 0; this.scratch[p + 2] = z;
+      this.scratch[p] = x;
+      // Ground-plane actors use the vacant height component for the raised-phone pose.
+      this.scratch[p + 1] = from[s + 15] + (current[s + 15] - from[s + 15]) * t;
+      this.scratch[p + 2] = z;
       this.scratch[p + 3] = heading;
       this.scratch[p + 4] = scale;
       this.scratch[p + 5] = from[s + 3] + (current[s + 3] - from[s + 3]) * t;

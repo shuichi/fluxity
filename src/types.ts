@@ -20,6 +20,8 @@ export interface SignalState {
 }
 export type Quality = 'performance' | 'balanced' | 'ultra';
 export type CameraView = 'perspective' | 'overview' | 'street';
+export type CrowdPreset = 'none' | 'runner' | 'selfie' | 'group' | 'mixed';
+export type CrowdModel = 'baseline' | 'enhanced';
 export interface Point2 { x: number; z: number }
 /** A reachable routing goal and its short, directed passage behind a facade or past a street edge. */
 export interface PedestrianPortal {
@@ -94,6 +96,8 @@ export interface Scenario {
   urbanMap?: UrbanMap;
   /** Calibrated surface markings for the renderer, in the local coordinates of the urban map. */
   roadMarkings?: 'shibuya';
+  /** Route pedestrians through Hachikō Square and spread the queue behind its crossing mouths. */
+  forecourtRouting?: boolean;
   vehicleLanes?: readonly VehicleLane[];
   /** Shared geometry for navigation, stop lines, zebra markings and signal fixtures. */
   scramble?: {
@@ -112,13 +116,17 @@ export interface SimulationConfig extends SimulationSettings {
   count: number;
   seed: number;
   scenario: ScenarioId;
+  crowdPreset?: CrowdPreset;
+  crowdModel?: CrowdModel;
+  densityGuidance?: boolean;
 }
 export const DEFAULT_CONFIG: SimulationConfig = {
   count: 1000, seed: 42, scenario: 'shibuya',
+  crowdPreset: 'mixed', crowdModel: 'enhanced', densityGuidance: false,
   simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto',
 };
-/** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity,headYaw,contactLean. */
-export const SNAPSHOT_STRIDE = 15;
+/** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity,headYaw,contactLean,selfiePose. */
+export const SNAPSHOT_STRIDE = 16;
 /** A fixed vehicle slot holds x, z, heading (+Z forwards), life (0 when unused), and speed. */
 export const VEHICLE_SNAPSHOT_STRIDE = 5;
 /** Toyota Corolla Sport G (2026), meters. The safety envelope includes the open door mirrors. */
@@ -141,6 +149,8 @@ export interface SnapshotMessage {
   meanSpeed: number;
   congestion: number;
   signal?: SignalState;
+  /** A featured participant in the same snapshot, when the preset has one. */
+  subjectId?: number;
 }
 export type WorkerInput =
   | { type: 'init'; config: SimulationConfig; generation: number; paused: boolean }

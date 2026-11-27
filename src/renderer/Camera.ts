@@ -113,6 +113,13 @@ export class Camera {
 
   reset(): void { this.setView('perspective'); }
 
+  frameParticipant(x: number, z: number, heading: number): void {
+    vec3.set(this.target, x, 1.05, z);
+    this.yaw = heading + 1.1;
+    this.elevation = 0.20;
+    this.distance = 8.5;
+  }
+
   setView(view: CameraView): void {
     this.target[0] = this.centerX; this.target[1] = 0; this.target[2] = this.centerZ;
     if (view === 'overview') {

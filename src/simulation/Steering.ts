@@ -1,14 +1,22 @@
 import type { UrbanGeometry } from './UrbanGeometry';
-import type { Scenario, SimulationSettings } from '../types';
+import { FIXED_DT, type Scenario, type SimulationSettings } from '../types';
 import type { AgentData } from './AgentData';
 import type { Direction, Navigation } from './Navigation';
 import type { EncounterState } from './EncounterState';
 import type { SpatialGrid } from './SpatialGrid';
+import { collisionTime, ReciprocalAvoidance } from './ReciprocalAvoidance';
 
 const MAX_CANDIDATES = 96;
 const FORWARD_SPEED = [1, 0.88, 0.88, 0.35] as const;
 const SIDE_SPEED = [0, 0.64, -0.64, 0] as const;
 const GAZE_LEAD_SECONDS = 0.12;
+const MAX_SCAN_RINGS = 4;
+// Visit the walker's own cell first when a longer horizon includes densely occupied distant cells.
+const gridRings = Array.from({ length: (2 * MAX_SCAN_RINGS + 1) ** 2 }, (_, i) => ({
+  x: i % (2 * MAX_SCAN_RINGS + 1) - MAX_SCAN_RINGS,
+  z: Math.floor(i / (2 * MAX_SCAN_RINGS + 1)) - MAX_SCAN_RINGS,
+})).sort((a, b) => Math.max(Math.abs(a.x), Math.abs(a.z)) - Math.max(Math.abs(b.x), Math.abs(b.z))
+  || (a.x * a.x + a.z * a.z) - (b.x * b.x + b.z * b.z));
 
 export interface Velocity { x: number; z: number }
 
@@ -20,17 +28,31 @@ export interface CrossingPriority {
   readonly waypointZ: Float32Array;
 }
 
-/** Replace this boundary with ORCA without changing state, worker transport, or navigation. */
+export interface AvoidanceContext {
+  reciprocal?: boolean;
+  speedLimit?: number;
+  dt?: number;
+  /** Neighbors committed to a stationary activity cannot share a course correction. */
+  stationary?: Uint8Array;
+  /** Anticipate a runner approaching at this speed even when this walker is slow. */
+  anticipationSpeed?: number;
+}
+
 export interface LocalAvoidance {
   /** The most recent compute call chose to clear space for a walker leaving the road. */
   readonly yieldingAtCurb?: boolean;
   /** This pedestrian is passing someone at a zebra edge or returning from its margin. */
   readonly allowCrossingMargin?: boolean;
-  compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale?: number, sidewalkOnly?: boolean): void;
+  /** The result already respects this tick's acceleration and speed discs. */
+  readonly resolvedNextVelocity?: boolean;
+  compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings,
+    result: Velocity, speedScale?: number, sidewalkOnly?: boolean, context?: AvoidanceContext): void;
 }
 
 export class Steering implements LocalAvoidance {
   candidateChecks = 0;
+  resolvedNextVelocity = false;
+  private readonly reciprocal = new ReciprocalAvoidance();
   yieldingAtCurb = false;
   allowCrossingMargin = false;
   private readonly wallPush = { x: 0, z: 0 };
@@ -101,7 +123,8 @@ export class Steering implements LocalAvoidance {
       && nav.lineOfSight(x, z, tx, tz, radius);
   }
 
-  compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale = 1, sidewalkOnly = false): void {
+  compute(id: number, agents: AgentData, grid: SpatialGrid, direction: Direction, settings: SimulationSettings, result: Velocity, speedScale = 1, sidewalkOnly = false, context?: AvoidanceContext): void {
+    this.resolvedNextVelocity = false;
     this.yieldingAtCurb = false;
     this.allowCrossingMargin = false;
     const state = agents.current;
@@ -114,19 +137,24 @@ export class Steering implements LocalAvoidance {
     const nearDoorway = this.doorwayCells?.[cell];
     const encounters = this.encounters;
     const mayChoose = !!encounters && !nearDoorway && settings.avoidanceStrength > 0 && preferredSpeed > 0;
+    const reciprocal = !!context?.reciprocal && settings.avoidanceStrength > 0 && !sidewalkOnly && !nearDoorway
+      && !this.crossing?.clearing[id] && !context.stationary?.[id] && preferredSpeed > 0;
+    const padding = 0.09 * Math.min(1.5, settings.avoidanceStrength);
+    if (reciprocal) this.reciprocal.reset();
     const reconsider = mayChoose && encounters!.reconsiderIn[id] <= 0;
     const horizon = mayChoose ? encounters!.horizon[id] : 1.6;
     let nearContact = false, contactClosing = 0, contactSide = 0;
     let gazeRisk = 0, gazeTarget = -1, nearestConflictTime = Infinity, neighborCount = 0;
     let examined = 0;
-    const range2 = grid.cellSize * grid.cellSize;
-    // Bounded candidates ensure a pathological queue does not turn into an all-pairs loop.
-    for (let oz = -1; oz <= 1; oz++) {
-      const nz = cz + oz;
-      if (nz < 0 || nz >= grid.rows) continue;
-      for (let ox = -1; ox <= 1; ox++) {
-        const nx = cx + ox;
-        if (nx < 0 || nx >= grid.columns) continue;
+    const range = reciprocal ? Math.min(MAX_SCAN_RINGS * grid.cellSize, Math.max(grid.cellSize,
+      horizon * (Math.max(preferredSpeed, Math.hypot(state.vx[id], state.vz[id])) + (context.anticipationSpeed ?? 2.6)) + 0.7)) : grid.cellSize;
+    const range2 = range * range, rings = Math.ceil(range / grid.cellSize);
+    // The baseline keeps its traversal order. Both searches bound pathological queues.
+    for (let oz = -rings; oz <= rings && examined < MAX_CANDIDATES; oz++) {
+      for (let ox = -rings; ox <= rings && examined < MAX_CANDIDATES; ox++) {
+        const offset = reciprocal ? gridRings[(oz + rings) * (2 * rings + 1) + ox + rings] : undefined;
+        const nx = cx + (offset?.x ?? ox), nz = cz + (offset?.z ?? oz);
+        if (nx < 0 || nx >= grid.columns || nz < 0 || nz >= grid.rows) continue;
         const neighborCell = nz * grid.columns + nx;
         const start = grid.offsets[neighborCell], end = grid.offsets[neighborCell + 1], size = end - start;
         for (let n = 0; n < size && examined < MAX_CANDIDATES; n++) {
@@ -175,7 +203,8 @@ export class Steering implements LocalAvoidance {
               }
             }
           }
-          const personalSpace = radius + 0.34;
+          // Hard contact retains a small separating response. Anticipation is handled by the velocity constraints.
+          const personalSpace = radius + (reciprocal ? 0.035 : 0.34);
           if (distance < personalSpace) {
             // Pedestrians on the public sidewalk yield to a walker committed to the narrow doorway.
             const stiffness = agents.portalStage[j] ? 8 : 3.6;
@@ -198,13 +227,26 @@ export class Steering implements LocalAvoidance {
               }
             }
           }
-          if (forward > 0 && Math.abs(across) < radius + 0.2 && forward < 1.8) {
+          if (!reciprocal && forward > 0 && Math.abs(across) < radius + 0.2 && forward < 1.8) {
             const otherForward = state.vx[j] * dirX + state.vz[j] * dirZ;
             const closing = preferredSpeed - otherForward;
             if (closing > 0.15) brake = Math.max(brake, (1 - forward / 1.8) * Math.min(0.85, closing * 0.5));
           }
           // Predict the closest approach to the walker at our current intended speed.
           const rvx = dirX * preferredSpeed - state.vx[j], rvz = dirZ * preferredSpeed - state.vz[j];
+          if (reciprocal) {
+            const body = radius + padding;
+            const entry = Math.min(collisionTime(dx, dz, rvx, rvz, body, horizon),
+              collisionTime(dx, dz, state.vx[id] - state.vx[j], state.vz[id] - state.vz[j], body, horizon));
+            this.reciprocal.consider(j, distance, entry, horizon);
+            if (forward > 0 && entry < horizon) {
+              const urgency = 1 - entry / horizon;
+              if (urgency > gazeRisk) { gazeRisk = urgency; gazeTarget = j; }
+              nearestConflictTime = Math.min(nearestConflictTime, entry);
+              lateral = Math.max(lateral, urgency);
+            }
+            continue;
+          }
           const rv2 = rvx * rvx + rvz * rvz;
           if (forward > 0 && rv2 > 0.08) {
             const time = (dx * rvx + dz * rvz) / rv2;
@@ -251,6 +293,14 @@ export class Steering implements LocalAvoidance {
         brake = Math.max(brake, Math.abs(encounters.lean[id]) * 0.3);
       }
     }
+    if (reciprocal) {
+      // Side commitment and gaze inform intent. The half-planes supply the avoidance correction.
+      const looking = !encounters || encounters.gazeLead[id] <= 0 || nearestConflictTime <= 0.65;
+      lateral = looking ? (encounters?.passSide[id] ?? 1) * gazeRisk * preferredSpeed * 0.16 : 0;
+      // The solver can slow the walker within the reachable disc. Applying the legacy yield
+      // penalty as well delays arrivals at the curb even when a forward velocity is feasible.
+      brake = 0;
+    }
     const avoidance = settings.avoidanceStrength;
     let desiredX = dirX * preferredSpeed * (1 - brake * Math.min(1, avoidance));
     let desiredZ = dirZ * preferredSpeed * (1 - brake * Math.min(1, avoidance));
@@ -263,7 +313,7 @@ export class Steering implements LocalAvoidance {
       desiredX += dirZ * 0.3; desiredZ -= dirX * 0.3;
     }
     if (this.urban) {
-      const passing = avoidance > 0 && (Math.abs(lateral) > 0.01 || Math.abs(pushX * dirZ - pushZ * dirX) > 0.04);
+      const passing = avoidance > 0 && ((reciprocal && gazeRisk > 0) || Math.abs(lateral) > 0.01 || Math.abs(pushX * dirZ - pushZ * dirX) > 0.04);
       this.allowCrossingMargin = this.urban.avoidance(x, z, agents.radius[id], this.wallPush, passing,
         sidewalkOnly, !!this.crossing?.clearing[id]);
       desiredX += this.wallPush.x; desiredZ += this.wallPush.z;
@@ -286,6 +336,10 @@ export class Steering implements LocalAvoidance {
     if (z > b.maxZ - margin) desiredZ -= (z - b.maxZ + margin) * 2;
     const speed = Math.hypot(desiredX, desiredZ), limit = preferredSpeed * 1.12;
     if (speed > limit && speed > 0) { desiredX *= limit / speed; desiredZ *= limit / speed; }
-    result.x = desiredX; result.z = desiredZ;
+    if (reciprocal) {
+      this.reciprocal.solve(id, agents, desiredX, desiredZ, context.speedLimit ?? limit, context.dt ?? FIXED_DT,
+        horizon, padding, context.stationary, encounters?.passSide[id] ?? 1, result);
+      this.resolvedNextVelocity = true;
+    } else { result.x = desiredX; result.z = desiredZ; }
   }
 }

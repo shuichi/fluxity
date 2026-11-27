@@ -96,7 +96,7 @@ The controller uses the mapped emergence lanes to leave room for people coming t
 
 ## Snapshot ABI
 
-Each pedestrian slot occupies **15 Float32 values / 60 bytes**.
+Each pedestrian slot occupies **16 Float32 values / 64 bytes**.
 
 | Float offset | Value |
 | --- | --- |
@@ -112,6 +112,7 @@ Each pedestrian slot occupies **15 Float32 values / 60 bytes**.
 | 12 | Visibility through the entrance or exit passage (0–1) |
 | 13 | Head yaw relative to the torso, in radians. The first-person view follows the same interpolated angle. |
 | 14 | Signed shoulder reaction to contact (−1 to 1). Positive values lean to the pedestrian's right. |
+| 15 | Selfie pose (0–1), interpolated with the hand and handset. |
 
 The same buffer carries `vehicleCapacity` vehicle slots after the `count` pedestrian slots. Each occupies **5 Float32 values / 20 bytes** and stores x, z, heading, life and speed in m/s, in that order. A zero life marks an empty slot. An active slot receives a new life when it is reused. Scenarios without traffic have zero vehicle slots.
 
@@ -123,10 +124,11 @@ This is a CPU transfer format. The renderer repacks visible instances into its W
 
 `Steering` scores continuing, passing on either side and yielding using nearby walkers' projected closest approaches. It tests the preferred maneuver against the walkable surface and carries the choice across ticks. A mild contact with sufficient measured closing speed produces a brief torso roll. The response rearms after leaving the contact cluster. Doorway movement, signal restrictions and final geometry constraints retain priority. A replacement pedestrian starts with fresh attention and encounter state.
 
+The Shibuya presets cast runners, photographers and companions from existing trips with a separate seeded random stream. Both walking models use the same initial cast. The enhanced model guides companions toward a comfortable side-by-side spacing on compatible crossing tracks. It uses finite-horizon velocity obstacles and ORCA half-planes during free movement on an active green crossing approach or track. The solver selects the next velocity within the speed and acceleration discs, with bounded relaxation when the constraints conflict. A photographer committed to stopping leaves the avoidance correction to the passer. The optional entry-density field samples local counts and directional motion before choosing a track. See the [algorithm notes](algorithms.html) and [1,000-person comparison](results/shibuya-crossing-behavior.md).
+
 ## Extension points
 
 - Replace `Simulation` behind the worker protocol with Rust/WASM without changing the UI or renderer.
-- Replace the steering implementation with ORCA while retaining grid neighbor search and preferred velocities from navigation.
 - Replace flow fields with a navigation provider using NavMesh or hierarchical planning.
 - Replace procedural joints with baked animation textures or storage-buffer palettes. Keep per-instance speed, appearance, phase, and clip IDs.
 - Move frustum/LOD selection and instance compaction to a compute pipeline. Retain the CPU path for devices without the required features or limits.
