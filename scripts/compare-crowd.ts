@@ -12,7 +12,7 @@ const count = 1000;
 const { values } = parseArgs({ options: {
   seed: { type: 'string', default: '42' }, seconds: { type: 'string', default: String(SIGNAL_CYCLE_SECONDS) },
   model: { type: 'string', default: 'baseline' }, preset: { type: 'string', default: 'none' },
-  density: { type: 'string', default: 'off' },
+  density: { type: 'string', default: DEFAULT_CONFIG.densityGuidance ? 'on' : 'off' },
 } });
 const seed = Number(values.seed), seconds = Number(values.seconds);
 if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error('Seed must fit in an unsigned 32-bit integer.');

@@ -120,9 +120,9 @@ export interface SimulationConfig extends SimulationSettings {
   crowdModel?: CrowdModel;
   densityGuidance?: boolean;
 }
-export const DEFAULT_CONFIG: SimulationConfig = {
+export const DEFAULT_CONFIG: Required<SimulationConfig> = {
   count: 1000, seed: 42, scenario: 'shibuya',
-  crowdPreset: 'mixed', crowdModel: 'enhanced', densityGuidance: false,
+  crowdPreset: 'mixed', crowdModel: 'enhanced', densityGuidance: true,
   simulationSpeed: 1, walkingSpeed: 1.35, avoidanceStrength: 1, signalMode: 'auto',
 };
 /** Packed slot: x,z,heading,speed,phase,appearance,scale,clip,r,g,b,life,opacity,headYaw,contactLean,selfiePose. */

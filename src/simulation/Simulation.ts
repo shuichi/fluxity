@@ -101,7 +101,7 @@ export class Simulation {
     if (this.scenario.vehicleLanes?.length) this.vehicles = new VehicleTraffic(config.seed, this.agents, this.scenario.vehicleLanes);
     if (this.traffic) this.crossings = new CrossingClearance(this.navigation, this.grid, count);
     if (this.scenario.scramble?.crosswalks.length) this.crosswalkFlow = new CrosswalkFlow(this.navigation, count, config.seed,
-      this.enhancedCrossing && config.densityGuidance === true);
+      this.enhancedCrossing && (config.densityGuidance ?? DEFAULT_CONFIG.densityGuidance));
     if (this.scenario.forecourtRouting && this.navigation.urban && this.crosswalkFlow) {
       this.forecourt = new ForecourtFlow(this.navigation, this.agents, config.seed);
       this.forecourtQueue = new ForecourtQueue(this.navigation, this.agents, this.crosswalkFlow, this.forecourt.traffic, config.seed);

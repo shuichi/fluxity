@@ -69,7 +69,7 @@ Viteの `base: './'` により、JavaScript・CSS・favicon・Workerを `/fluxit
 - Reset：同じ設定・同じシードで再初期化。
 - Population：1,000 / 5,000 / 10,000 / 20,000人。
 - シナリオ：Shibuya Scramble、City Plaza、Bidirectional Corridor、Bottleneck、Crossing Flow。
-- 渋谷の **Crossing scene** で Ordinary（通常）、Runner（走者）、Selfie（自撮り）、Group（同行者）、Mixed（混合）を選べます。標準は Mixed / Enhanced です。**Walking model** を切り替えると同じ初期配置と出演者で再開します。Enhanced では **Density-guided entry** で混雑に応じた横断位置の選択を試せます。
+- 渋谷の **Crossing scene** で Ordinary（通常）、Runner（走者）、Selfie（自撮り）、Group（同行者）、Mixed（混合）を選べます。標準は Mixed / Enhanced です。**Walking model** を切り替えると同じ初期配置と出演者で再開します。Enhanced では **Density-guided entry** が初期設定でオンになり、密度と対向流に応じて横断歩道に入る位置を選びます。オフにして同じシードで歩き方を比べられます。
 - **Track participant** を押すと、選んだ場面の走者・撮影者・同行者を近くから追えます。もう一度押すと追跡を終了します。[比較映像と計測結果](docs/results/shibuya-crossing-behavior.md)
 - ShibuyaのBuilding appearance：**Photo / Solid**。PLATEAUの写真表示と単色表示を、歩行者の状態を維持したまま切り替えます。
 - 渋谷の **Traffic signals** では、**Auto**（自動切替）、**Walk**（歩行者）、**E–W**（東西の車）、**N–S**（南北の車）、**All red**（全赤）を選べます。手動操作は次に通す方向の指定です。街頭の灯器と操作パネルには、実際にその時点で有効な信号が表示されます。一時停止中も指定でき、再生すると切り替えに必要な時間が進みます。

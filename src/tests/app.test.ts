@@ -118,6 +118,15 @@ describe('application / worker integration', () => {
   });
   afterEach(() => { app.destroy(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+  it('starts Shibuya with density-guided entry and keeps an explicit opt-out on reset', () => {
+    const worker = FakeWorker.instance;
+    expect(worker.latestInit().config).toMatchObject({ scenario: 'shibuya', crowdModel: 'enhanced', densityGuidance: true });
+    controls().onConfig({ densityGuidance: false }, true);
+    expect(worker.latestInit().config.densityGuidance).toBe(false);
+    controls().onReset();
+    expect(worker.latestInit().config.densityGuidance).toBe(false);
+  });
+
   it('frames the featured participant in the current replay and drops the old subject on reset', () => {
     const worker = FakeWorker.instance;
     const snapshot = worker.snapshot(3);

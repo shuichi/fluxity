@@ -1,4 +1,5 @@
 import type { CameraView, CrowdModel, CrowdPreset, Quality, ScenarioId, SignalMode, SignalState, SimulationConfig } from '../types';
+import { DEFAULT_CONFIG } from '../types';
 import { SIGNAL_CYCLE_SECONDS } from '../simulation/TrafficSignal';
 import { pedestrianLamp } from '../renderer/TrafficLights';
 
@@ -317,7 +318,7 @@ export class Controls {
     this.get('shibuya-behavior').hidden = config.scenario !== 'shibuya';
     this.get<HTMLSelectElement>('crowd-preset').value = config.crowdPreset ?? 'none';
     this.get<HTMLSelectElement>('crowd-model').value = config.crowdModel ?? 'baseline';
-    this.get<HTMLInputElement>('density-guidance').checked = !!config.densityGuidance;
+    this.get<HTMLInputElement>('density-guidance').checked = config.densityGuidance ?? DEFAULT_CONFIG.densityGuidance;
     this.get('density-row').hidden = config.crowdModel !== 'enhanced';
     this.get('frame-subject').hidden = !config.crowdPreset || config.crowdPreset === 'none';
     this.root.classList.toggle('signal-scene', config.scenario === 'shibuya');
