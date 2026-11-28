@@ -34,7 +34,7 @@
   <div class="brand"><strong>FLUXITY</strong><a href="../">シミュレータを開く ↗</a></div>
   <h1>Fluxityの群衆はどう動くか</h1>
   <p class="lead">狭い通路では人の列ができ、広場では同じ店に向かう人が植栽の両側に分かれます。Fluxityが行き先と地形から大まかな進路を決め、混雑や目の前の相手に応じて一人ひとりの歩みを変える仕組みを解説します。</p>
-  <div class="meta"><span>実装確認日　2026年11月28日</span><span>アルゴリズム本体の参照版　<a href="https://github.com/shuichi/fluxity/tree/239a201249a758afad85da8663306f6a54965def"><code>239a201</code></a></span></div>
+  <div class="meta"><span>実装確認日　2026年11月28日</span><span>既存手法の参照版　<a href="https://github.com/shuichi/fluxity/tree/239a201249a758afad85da8663306f6a54965def"><code>239a201</code></a></span></div>
 </header>
 <div class="layout">
   <nav class="toc" aria-label="目次">
@@ -129,10 +129,10 @@
             </tr>
             <tr>
               <th scope="row">有限状態機械（FSM）</th>
-              <td>渋谷の歩行者・車両信号と、撮影者の行動</td>
-              <td>信号は青から警告、全赤へ移り、歩車の退避後に次の方向を通す。撮影者は横断中に減速し、停止して撮影した後、歩行に戻る。<a href="#signals">信号の遷移</a>・<a href="#crossing-scenes">撮影の条件</a></td>
+              <td>渋谷の歩行者・車両信号、信号を待つ人、横断中に撮影する人</td>
+              <td>信号は歩車の退避後に次の方向を通す。横断予定者は列に着くと止まり、青で歩き出す。撮影者は横断中に減速し、停止して撮影した後、歩行に戻る。<a href="#signal-queue">信号待ちの列</a>・<a href="#crossing-scenes">撮影の条件</a></td>
               <td><a href="https://onlinelibrary.wiley.com/doi/abs/10.1002/j.1538-7305.1955.tb03788.x">Mealy（状態遷移）</a></td>
-              <td><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/TrafficSignal.ts#L57"><code>TrafficSignal.ts</code></a><br><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/ShibuyaActivities.ts#L224"><code>ShibuyaActivities.ts</code></a></td>
+              <td><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/TrafficSignal.ts#L57"><code>TrafficSignal.ts</code></a><br><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/SignalQueue.ts"><code>SignalQueue.ts</code></a><br><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/ShibuyaActivities.ts#L224"><code>ShibuyaActivities.ts</code></a></td>
             </tr>
           </tbody>
         </table>
@@ -142,8 +142,8 @@
       <p>植栽の向こうの店へ歩く人は、まず店のフローフィールドをたどり、先の歩道に合流地点を決めます。経由点ネットワークからそこへ抜ける道を取り出し、混雑の影響マップの1.6 m四方のセルから、道に沿った密度と対向流を読み取ります。少し遠回りでも、人波に逆らう区間が短くなり、全体の通りやすさが十分に改善すれば、広場の内側を通ります。同じ場所から同じ店へ歩かせるテストでは、植栽の北側に対向者を置くと、空いているときより早く内側へ向きを変え、同じ店に着きます。<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/forecourt-flow.test.ts">二つの経路を比べたテスト</a></p>
 
       <h3>次の一歩は、近くの人と歩ける空間から決める</h3>
-      <p>進路が決まると、歩行者は自分の歩きたい速さと周囲の位置・速度から、直進するか、左右によけるか、減速するかを判断します。前の人に追いつくと歩調を緩め、対向者とすれ違える空間があれば脇を通ります。渋谷では、戸口での譲り合い、信号待ち、車道からの退避もこの一歩に反映されます。<a href="#neighbors">第4節の近傍探索</a>・<a href="#steering">第5節の局所回避</a></p>
-      <p>歩行計算は1/30秒ごとに、加速できる範囲と地形に収まる移動先を決めます。身体は実際に進んだ方向へ向き、足の振りは進んだ距離に合わせて変わります。次の一歩では周りの人もこの新しい位置を見て動くため、一人の減速が後続に伝わり、狭い開口の手前には列ができます。<a href="#integration">第6節の速度と向き</a>・<a href="#time">第8節の画面表示</a></p>
+      <p>進路が決まると、歩行者は自分の歩きたい速さと周囲の位置・速度から、直進するか、左右によけるか、減速するかを判断します。前の人に追いつくと歩調を緩め、対向者とすれ違える空間があれば脇を通ります。渋谷で横断する人は、赤信号の列に追いつくと、前の人の後ろで立ち止まります。同じ歩道を先へ進む人は、列の脇を通れます。<a href="#neighbors">第4節の近傍探索</a>・<a href="#steering">第5節の局所回避</a></p>
+      <p>歩行計算は1/30秒ごとに、加速できる範囲と地形に収まる移動先を決めます。歩く間は身体が移動方向へ向き、進んだ距離に応じて足を振ります。信号を待つ間は身体の向きを保ち、ときどき首を動かして対岸や通行人を見ます。次の一歩では周りの人もこの新しい位置を見て動くため、一人の減速が後続に伝わり、狭い開口の手前には列ができます。<a href="#integration">第6節の速度と向き</a>・<a href="#time">第8節の画面表示</a></p>
     </section>
 
     <section id="pipeline">
@@ -154,7 +154,7 @@
         <li><strong>人の位置を調べる</strong>地図を格子に区切り、それぞれの区画にいる人を記録する。走者や撮影者の状態を進める。混雑を測る時刻には広場の密度と流量を更新し、設定に応じて横断口でも測る。</li>
         <li><strong>進む向きを決める</strong>目的地への経路をたどり、広場や横断口では混み方や歩ける幅に応じて通る位置を選ぶ。同行者がいれば、その人の位置と歩調も考慮する。</li>
         <li><strong>歩く速さを決める</strong>縁石や戸口で待つ必要があるかを調べる。青信号で横断するときは、周囲の人とすれ違えるよう速度を調整する。</li>
-        <li><strong>一歩進める</strong>歩行できる範囲と車体の位置を確かめて移動先を決め、実際に進んだ距離に合わせて体の向きと足の動きを更新する。</li>
+        <li><strong>一歩進める</strong>歩行できる範囲と車体の位置を確かめて移動先を決め、歩いた距離に合わせて足を動かす。身体の向きは歩行中に更新し、信号を待つ間は保つ。</li>
         <li><strong>車を進める</strong>信号や前の車との間隔に加え、この一歩で歩行者がどこを通ったかを調べ、車の移動先を決める。</li>
         <li><strong>街への出入りを扱う</strong>目的の建物や通りの端に着いて街を出た人と入れ替わり、別の出入口から新たな歩行者が現れる。</li>
         <li><strong>統計を更新する</strong>一人ずつ確定した移動を集計し、平均歩行速度や横断中の人数を表示用にまとめる。</li>
@@ -181,6 +181,7 @@ w = 1（縦・横）または √2（斜め）</code></pre>
       <p>渋谷の地図では、周囲から切り離された庭など、すべての出入口につながる領域の外にあるセルを除きます。出入口の間に通れる道がなければ、地図の読み込み時にエラーを返します。</p>
       <h3>見通しのよい区間では、目的地へまっすぐ向かう</h3>
       <p>渋谷の地図では、目的地まで10 m以内なら、歩行者の体が途中で歩道からはみ出さずに直進できるかを確かめます。この判定には身体半径に0.015 mを加えた値を使います。直進できれば目的地へ向かいます。それ以外は、周囲3×3セルのうち見通せるものから <code>D + 0.1 × 現在位置からの距離</code> が最も小さくなるセルを選び、フローフィールドを最大3セル先までたどります。</p>
+      <p>赤や青点滅で歩道の角を回る人は、通常の進路が横断歩道の端をかすめて縁石での減速判定を受けることがあります。その横断歩道を通り過ぎて先の横断口へ向かう人や、同じ側の歩道を進む人は、歩道内に身体が収まる範囲でもう一度先を見通します。目的地に近づく一歩が見つかれば、その進路で歩き続けます。<a href="#src-navigation">歩道内の進行方向を求める実装</a></p>
       <p>横断中に人をよけて白線の外に出ると、普段使う範囲に戻り先が見つからないことがあります。そのときは周囲5×5セル、さらに必要なら見通せる最寄りの経路セルまで探します。こうした回り道や、見通しのよい場所での近道があるため、実際に歩いた距離には各人の周囲の状況も表れます。</p>
       <p class="small">地図を読み込むとき、道路や建物の輪郭を作る辺に番号を付け、1 m幅の行ごと、4 m四方の区画ごとにまとめて配列に保存します。歩ける範囲の内外は、その行にある辺と半直線の交差回数で判定するので、植え込みなどの穴も区別できます。境界の辺がない区画では内外がどこでも同じなので、判定結果を記録しておきます。身体の幅を含めた通り道が境界に近づくときは、重なる区画の番号から辺を直接引いて距離を確かめます。</p>
       <h3 id="density-entry">横断歩道のどこから渡り始めるか</h3>
@@ -190,7 +191,7 @@ w = 1（縦・横）または √2（斜め）</code></pre>
       <h3 id="forecourt-routing">ハチ公口で混み合う歩道を避け、広場を通る</h3>
       <p>ハチ公広場では、通常の経路を約27 m先までたどり、歩道上に合流点を決めます。途中で次の横断口や目的地、広場周辺の範囲の端に達したら、そこまでの区間を比べます。外周の歩道や植栽の両脇に置いた経由点のうち、13 m以内で歩道上を直進できる点同士を結びます。1個か2個の経由点を通って合流する候補を、元の経路と比べます。迂回の長さは元の区間の1.3倍＋1 mまでです。</p>
       <p>各区間の費用は歩く距離を基本に、2 m以内の間隔で歩道の縁までの余裕と、そこを進む向きで測った密度・対向流を加味します。迂回で減る費用が元の費用の5%と0.8 m相当の両方を超えるときは、最も費用の小さい候補を選び、その経由点を順に通って元の道へ戻ります。経由点を少し横にずらしても歩道に収まるときは、同じ道を選んだ人にも歩く位置の違いが生まれます。</p>
-      <p>赤や青点滅で新たに渡れない間、縁石付近が混むと、後から来た人は広場で待ちます。空いている候補のうち、そこまでの距離、縁石へ戻る距離、その場の人数密度から待機場所を選びます。先頭の人は縁石に残れます。待機場所は使う横断歩道の縁石から14 m以内で、本人と横断口の両方から歩道上を行き来できる位置です。青になると選んでいた横断歩道へ向かいます。広場で足を止めて待っている人も画面の Waiting に含みます。広場で使う混雑の地図は、横断口の「Density-guided entry」がオフのときも更新します。<a href="#src-forecourt">広場の経路・待機位置の実装</a></p>
+      <p>赤や青点滅で新たに渡れない間、縁石付近が混むと、後から来た人は広場で待ちます。空いている候補のうち、そこまでの距離、縁石へ戻る距離、その場の人数密度から待機場所を選びます。先頭の人は縁石に残れます。待機場所は使う横断歩道の縁石から14 m以内で、本人と横断口の両方から歩道上を行き来できる位置です。そこまでは確認済みの歩道上を進み、選んだ場所に着くと足を止めます。青になると予定の横断歩道へ向かいます。広場で使う混雑の地図は、横断口の「Density-guided entry」がオフのときも更新します。<a href="#src-forecourt">広場の経路・待機位置の実装</a></p>
       <h3>歩道で前がふさがったときは、空いている側へ回る</h3>
       <p>渋谷の歩道で対人回避が有効なときは、近傍探索のセルに複数人がいて、目的地まで3 m以上ある人が周囲5 mの歩行者を調べます。前がふさがっていれば、相手が0.4秒後にいる位置を予測し、正面と左右それぞれ25°・50°・77°の計7方向を比べます。歩道内を選んだ方向に3.5 m進めるなら、その地点を当面の目標にします。そこまで届かないときは1.6 m先を試します。</p>
       <p>この見直しは15ステップごとに行い、全員が同時に判断しないよう、歩行者ごとにタイミングをずらします。横断歩道に向かうとき、車道から歩道に戻るとき、戸口で人に道を譲るときには、それぞれの動きを優先します。</p>
@@ -214,14 +215,14 @@ w = 1（縦・横）または √2（斜め）</code></pre>
       <h2><span class="num">第5節</span>人とすれ違うとき、どちらによけるか</h2>
       <p>向かいから人が来ると、少し早めに進路をずらすことがあります。一方、前を歩く人に追いついたときは、歩調を緩めるだけで間隔を保てます。従来の歩行モデルは、こうした場面で<strong>どちらによけるか、どれだけ減速するか</strong>を選びます（§5.1〜5.5）。青信号の横断歩道では、双方が少しずつ進路を変える<a href="#reciprocal-avoidance">相互回避</a>も使います。<a class="cite" href="#ref-4">[4]</a></p>
       <dl class="symbols"><dt>pᵢ, vᵢ, rᵢ</dt><dd>歩行者iの位置、現在速度、身体の半径。</dd><dt>dᵢ, sᵢ</dt><dd>進みたい方向と速さ。速さには分岐での減速や、信号が変わって歩道に戻るときの加速も含む。通常、dᵢの長さは1。</dd><dt>q, R</dt><dd>自分から見た相手jの位置 q = pⱼ − pᵢ と、二人の身体半径の和 R = rᵢ + rⱼ。</dd><dt>right(dᵢ)</dt><dd>進行方向に対して右を向くベクトル (dᵢ.z, −dᵢ.x)。</dd><dt>k</dt><dd>回避の強さ。初期値は1。操作パネルの対人距離の設定（Personal space）で0〜2.5の範囲を指定できる。</dd></dl>
-      <p class="small">歩行者用信号が青点滅または赤のときは、縁石の手前でdᵢのうち車道へ向かう成分を小さくします。以下の式で求める前方距離にも、その変化が反映されます。</p>
+      <p class="small">歩行者用信号が青点滅または赤のときは、縁石の手前でdᵢのうち車道へ向かう成分を小さくします。列に着くと希望速度をゼロにして、接触や優先通行に必要なときだけ足を動かします。<a href="#signal-queue">縁石と列で止まる条件</a></p>
       <h3>5.1 近づきすぎた相手から少し離れる</h3>
       <p>二人の身体の間が0.34 mを切ると、従来の歩行モデルでは、次の一歩を相手から離れる側へ向けます。近いほど強く働き、特に戸口を通っている相手には大きく道を空けます。これはBoidsでいう「分離」にあたります。補正するのは速度なので、混み合うと身体が重なることもあります。<a class="cite" href="#ref-3">[3]</a></p>
       <pre><code>δ = |q| （二人の中心間距離）
 c = 通常は3.6、相手が出入口を通行中なら8
 Sᵢⱼ = −(q / δ) × min(2.4, c × (R + 0.34 − δ))
 Sᵢ = δ &lt; R + 0.34 を満たす相手から受ける Sᵢⱼ の合計</code></pre>
-      <p class="small">二人の位置がほぼ重なるときは、互いに逆を向く短いベクトルを歩行者IDから決め、離れる方向を定めます。</p>
+      <p class="small">信号待ちの人は上式の0.34 mを0 mにして、身体の円が重なった場合だけ分離します。二人の位置がほぼ重なるときは、互いに逆を向く短いベクトルを歩行者IDから決め、離れる方向を定めます。</p>
       <h3>5.2 前の人に追いつくと減速する</h3>
       <p>前方1.8 m以内に人がいて、進路もほぼ重なるときは、その人との速度差を見ます。進行方向に0.15 m/sを超える速さで追いつきそうなら、距離が詰まるほど歩調を緩めます。対象が複数いるときは、最も大きな減速が必要な相手に合わせます。</p>
       <pre><code>f = q・dᵢ （進行方向の距離）
@@ -240,7 +241,7 @@ u = (1 − t* / Hᵢ) × (1 − δ* / (R + 0.35))</code></pre>
       <p>試す動きは<strong>直進、右へよける、左へよける、減速して譲る</strong>です。希望速度に対する倍率を（前方、右方向）の順に表すと、それぞれ（1, 0）、（0.88, 0.64）、（0.88, −0.64）、（0.35, 0）です。候補ごとに、最も近づきそうな相手との距離と、そこに達するまでの時間を調べます。自分より0.3 m以上後方の人（q・dᵢ &lt; −0.3）はこの比較から外しますが、すぐ近くにいる人からは§5.1の規則で距離を取ります。</p>
       <p>各候補の点数は、最も危険な接近の見積もりと、動き自体に割り当てたコストの和です。直進は0、右へよけると0.08、左は0.25、譲る場合は人によって0.11〜0.28です。よける側を決めた後で動きを変える候補にはさらに0.36を加えます。そのため、いったん右へ踏み出した人が、すぐに左へ切り返すことは少なくなります。</p>
       <p>点数の低い候補から順に、0.65秒先まで壁や縁石に遮られず、信号を守って進めるか確かめます。どこにも進めなければ減速します。危険が続く間は0.42〜0.62秒おきに選び直し、予測が一瞬途切れても、よける側は0.38秒間覚えています。接近まで0.65秒より長い余裕があれば、新しくよける側に視線を向け、0.12秒かけて横へ踏み出します。切迫していればすぐよけます。</p>
-      <p class="small">横へよけると決めたときの補正は希望速度の0.30倍以上、譲る場合の減速係数は <code>min(0.62, 0.22 + 0.46 × 最大緊急度)</code> 以上です。いずれも接近が解消すれば解除します。四つの候補を比べるのは、戸口付近を除き、希望速度と回避の強さがともに正のときです。</p>
+      <p class="small">横へよけると決めたときの補正は希望速度の0.30倍以上、譲る場合の減速係数は <code>min(0.62, 0.22 + 0.46 × 最大緊急度)</code> 以上です。いずれも接近が解消すれば解除します。通常の歩行で四つの候補を比べるのは、戸口付近を除き、希望速度と回避の強さがともに正のときです。</p>
       <figure>
         <div class="diagram-scroll" role="region" aria-label="最近接予測の模式図（横スクロール可能）" tabindex="0">
         <svg viewBox="0 0 700 230" role="img" aria-labelledby="prediction-title prediction-desc" xmlns="http://www.w3.org/2000/svg">
@@ -264,7 +265,7 @@ u = (1 − t* / Hᵢ) × (1 − δ* / (R + 0.35))</code></pre>
           + k × (Sᵢ + lateral × right(dᵢ))
           + 戸口や縁石で譲る動き + 足止めされたときの右寄せ + 壁や地図の外縁から離れる動き
 最後に |v_desired| を 1.12sᵢ 以下におさめる</code></pre>
-      <p>向かい合った二人がその場で立ち往生したときには、少し右に寄って動き出すきっかけを作ります。具体的には、その人が普段歩きたい速さの20%未満の状態が2秒を超え、なお前に進もうとしている場合に、右向きの速度 <code>0.3 × right(dᵢ)</code> を加えます。</p>
+      <p>向かい合った二人がその場で立ち往生したときには、少し右に寄って動き出すきっかけを作ります。具体的には、その人が普段歩きたい速さの20%未満の状態が2秒を超え、なお前に進もうとしている場合に、右向きの速度 <code>0.3 × right(dᵢ)</code> を加えます。信号を待つ時間は、この2秒に含めません。</p>
       <p>歩ける範囲の境界が <code>rᵢ + 0.75 m</code> より近いと、内側へ向く力が働きます。横断歩道で人をよける間は、白線の外に許された余裕も使えます。対人距離の設定を0にしても、壁から離れる動き、信号による制限、立ち往生したときの右寄せは働きます。</p>
       <h3>5.5 肩が触れたときは上体を引く</h3>
       <p>二人の身体の円が接し、実際に近づく速さが0.22 m/sを超えていれば、触れた側とは反対に上体を少し傾けます。傾きは接近が速いほど大きくなり、最大0.21 radです。従来の歩行モデルでは、この動きに合わせて一時的に歩調も緩めます。身体の間隔が0.055 m以内なら同じ接触として扱い、離れてから約0.24秒後に次の接触に反応できるようにします。混んだ場所で肩を並べて立つ二人が、何度も上体を引くのを防ぐためです。</p>
@@ -299,11 +300,12 @@ p′ = p + v′Δt
       <p>歩道や横断歩道の端では、身体の半径に0.015 mの余裕を加え、現在地から次の位置まで通れるかを調べます。斜めに境界にぶつかりそうなら、手前まで進んでから境界に沿って移動します。戸口付近では人との間隔も確認し、予定した一歩が車体に重なるときは元の位置にとどまります。</p>
       <p>実際の速度は、こうして進めた距離と向きから <code>v = (確定した位置 − 直前の位置) / Δt</code> として求めます。障害物の手前で歩みが止まると、結果として通常の減速の上限（3.8 m/s²）を超える場合があります。</p>
       <h3>進んだ距離に足の動きを合わせる</h3>
-      <p>移動速度が0.045 m/sを超えると、身体は移動方向 <code>atan2(vx, vz)</code> に向かって、回転が小さくて済む側から毎秒最大3.5 radずつ向きを変えます。横によけた瞬間にも、上体が少し遅れて進行方向を向きます。</p>
+      <p>通常の歩行では、移動速度が0.045 m/sを超えると、身体は移動方向 <code>atan2(vx, vz)</code> に向かって、回転が小さくて済む側から毎秒最大3.5 radずつ向きを変えます。信号待ちに入ると、そのときの身体の向きを保ちます。接触を避けて足を横にずらすときも、胴体は同じ方を向いたままです。</p>
       <p>脚の振りは進んだ距離に合わせて <code>phase += speed × Δt × 4.5</code> で進め、止まるとその場で位相を保ちます。描画では、実速度が0.02〜0.55 m/sの範囲で腕や脚の振りを滑らかに大きくし、1.9〜3.2 m/sの範囲で歩幅や前傾を走る姿へ移していきます。</p>
       <h3>信号に目を向ける、道の分かれ目でためらう</h3>
-      <p>青点滅や赤で縁石に近づき減速し始めた人は、対岸やそちら側の歩行者用信号、近くを歩く人に目を向けます。見回す間隔は0.65秒に指数分布から抽選した時間を加えて決め、周囲への関心が強い人ほど頻繁に見回します。すれ違うときは、横によける前に空いた隙間を見る人もいます。首の動きは左右1.18 radまで、速さは毎秒2.8 radまでです。一度そちらを向くと0.45〜1.05秒ほど視線を留めてから正面に戻します。歩行者の目線で見るカメラもこの動きに従います。</p>
+      <p>青点滅や赤で横断を待つ人は、縁石へ近づいて減速する間や列で待つ間に、対岸やそちら側の歩行者用信号、近くを歩く人に目を向けます。見回す間隔は0.65秒に指数分布から抽選した時間を加えて決め、周囲への関心が強い人ほど頻繁に見回します。すれ違うときは、横によける前に空いた隙間を見る人もいます。首の動きは左右1.18 radまで、速さは毎秒2.8 radまでです。一度そちらを向くと0.45〜1.05秒ほど視線を留めてから正面に戻します。</p>
       <p>交差点の入口や障害物の手前では、目的地の方角を中心に11方向を10 m先まで調べます。障害物などの両側を通れるとき、残りの道のりの差が3.5 m以内なら、もう一方の道にも目を向けることがあります。その分岐で迷うかどうかは、各人が道にどれだけ慣れているかに応じて一度だけ決めます。迷った人は0.55〜1.25秒ほど普段の35〜62%の速さに落としてから、元の目的地へ歩き続けます。横断中、信号待ち、戸口で順番を待つ場面では、このためらいによる減速は起きません。</p>
+      <p>人物を選んで主観視点にすると、身体の向きに合わせてカメラがゆっくり旋回します。目の高さに出る赤い輪は、身体の向きと首の角度を合わせた水平視線です。たとえば分岐で左の道を確かめながら直進する人を選ぶと、正面の景色を保ったまま輪が左に動きます。視線が画面外や操作パネルの裏に向いたときは、見えている景色の端に輪と矢印を表示します。<a href="#src-camera">主観カメラの実装</a></p>
       <p class="source">動きと視線の計算は <a href="#src-attention">PedestrianAttention</a>、<a href="#src-navigation">Navigation.alternativeAtFork</a>、<a href="#src-simulation">Simulation.step / writeSnapshot</a> にあります。</p>
     </section>
 
@@ -314,14 +316,17 @@ p′ = p + v′Δt
       <p>横断歩道には幅があり、同じ歩道から対岸へ渡るにも、いくつもの通り方があります。歩道を歩く人は、使う横断歩道の入口から12 m以内まで来ると、どの位置を通るかを選びます。人が一方向に流れていれば幅いっぱいに広がり、向かいから来る人が多ければ、これから渡る人ほど進行方向の右側を選びやすくなります。既に渡り始めた人は、自分が選んだ位置を保ちます。</p>
       <div class="states">
         <div class="state"><h3><span class="lamp green" aria-hidden="true"></span>歩行者の青</h3><p>5本の横断歩道が同時に開き、斜め方向も渡れます。車両用は全方向で赤です。人をよけるときは、白線の外側にも最大0.8 mまで踏み出せます。</p></div>
-        <div class="state"><h3><span class="lamp green" aria-hidden="true"></span>歩行者の青点滅</h3><p>これから渡る人は縁石で待ちます。横断中の人は近い方の歩道へ急ぎます。渡り始めなら引き返すこともあります。ふだんの希望速度を最大25%引き上げます。引き上げた後の上限は2.8 m/sです。もともとこれより速い人は自分の希望速度を保ちます。</p></div>
-        <div class="state"><h3><span class="lamp" aria-hidden="true"></span>歩行者の赤</h3><p>歩道にいる人は引き続き縁石で待ちます。横断中の人は点滅時に選んだ歩道へ向かい、たどり着く先にいる人は道を譲ります。車道に歩行者が残っている間、車両用信号はすべて赤のままです。</p></div>
+        <div class="state"><h3><span class="lamp green" aria-hidden="true"></span>歩行者の青点滅</h3><p>これから渡る人は縁石やその後ろの列、広場の待機位置で待ちます。横断中の人は近い方の歩道へ急ぎます。渡り始めなら引き返すこともあります。ふだんの希望速度を最大25%引き上げます。引き上げた後の上限は2.8 m/sです。もともとこれより速い人は自分の希望速度を保ちます。</p></div>
+        <div class="state"><h3><span class="lamp" aria-hidden="true"></span>歩行者の赤</h3><p>横断を待つ人は列にとどまり、歩道に沿って進む人は歩き続けます。横断中の人は点滅時に選んだ歩道へ向かい、たどり着く先にいる人は道を譲ります。車道に歩行者が残っている間、車両用信号はすべて赤のままです。</p></div>
       </div>
       <p>歩行者用の二灯は上に赤の停止人形、下に青の歩行人形を表示します。車両用の三灯は運転者から見て左から青・黄・赤の順です。<a href="https://laws.e-gov.go.jp/law/335CO0000000270">道路交通法施行令第2・3条</a> · <a href="https://www.npa.go.jp/laws/notification/koutuu/kisei/kisei20250131.pdf">警察庁「歩車分離式信号に関する指針」</a></p>
-      <h3>信号待ちの列と、歩道へ戻る人</h3>
+      <h3 id="signal-queue">信号待ちの列と、歩道へ戻る人</h3>
       <p>横断中に青点滅や赤を迎えると、まず身体全体が収まる歩道のうち、今の位置から道のりが短い方を選びます。まっすぐ行ける場所なら直線距離を使い、見通せなければ、横断できる範囲を格子に分け、上下左右の4方向へ幅優先探索して道のりを求めます。ここでの判断基準は歩道までの距離です。</p>
-      <p>歩道にいる人は、横断歩道に向かって停止位置の3 m手前まで近づくと、車道へ踏み出す向きだけを弱めます。縁石に垂直な方向に2.2 mかけて減速し、身体の有効半径に0.08 mの余裕を取って止まります。信号を待つ間も縁石に沿って横に歩けます。最後に一歩が歩道内に収まるかを確かめ、周りの人をよけた拍子に車道へ押し出されるのを防ぎます。ここで使う有効半径は身体半径に0.015 mを加えた値で、横断人数を数えるときも同じです。</p>
-      <p>歩道へ戻る途中の人は、列にふさがれても当初選んだ歩道を目指します。2秒ごとに進み具合を調べ、足止めされていれば、元の到着予定位置から12 m以内で、途中や縁石がより空いている場所を探し直します。歩道へ直接上がれるところまで来たら近道も試します。縁石の手前2.1 m以内で信号を待つ人は少し後退し、行く手をふさいでいる人も斜めに退いて場所を空けます。横断してきた人は全身が歩道に収まると、再び元の目的地へ向かいます。</p>
+      <p>これから渡る人は、赤・青点滅でも横断口に近づけます。停止位置は縁石から身体の有効半径と0.08 mの余裕を取った位置です。進む方向に測って停止位置まで3 mを切ると、縁石に垂直な方向の歩みを2.2 mの範囲で弱めます。渋谷の地図では、予定した横断歩道の手前側で最も近い出入り地点までの直線距離が、停止位置までの垂直距離に1.6 mを足した範囲に入れば、その横断口への接近と判定します。そこで垂直距離が0.45 m以内になると待機に入ります。身体の有効半径は通常の半径に0.015 mを加えた値で、最後に一歩全体が歩道に収まるかを調べるときも使います。</p>
+      <p>縁石までの道が混んでいるときは、同じ横断歩道を同じ側から渡る人の後ろでも止まれます。直前のステップで待っていた人が、今の進路のすぐ前に見えることが条件です。二人の身体半径の和をRとすると、通常は前方にR + 0.52 mまで、横のずれはRまで、中心間距離は1.2 m以内を調べます。混み合う横断口では、列が互い違いになることもあります。縁石への接近を検知し、希望速度の20%未満の状態が1秒以上続いている人は、前方の条件を保ったまま、横はR + 0.55 mまで、中心間距離は1.5 m以内に広げて前の人を探します。</p>
+      <p>ハチ公前広場で待機場所を割り当てられた人は、そこまでの一歩を歩道内に保ちながら、途中の縁石で足を緩めずに待機場所に向かいます。縁石の列でも広場でも、使う横断歩道を覚えたまま減速し、青になるとそこに向けて歩き出します。</p>
+      <p>列で待つ間は胴体の向きを保ち、ふだんの対人距離を取るための横移動や、立ち往生から抜け出すための右寄せを休みます。静止した人も、身体が重なれば間隔を取り、横断を終えて歩道に上がる人や戸口を通る人には必要な場所を譲ります。足は実際に動いた距離に応じて動き、首は信号や近くの通行人へ向けられます。</p>
+      <p>歩道へ戻る途中の人は、列にふさがれても当初選んだ歩道を目指します。2秒ごとに進み具合を調べ、足止めされていれば、元の到着予定位置から12 m以内で、途中や縁石がより空いている場所を探し直します。歩道へ直接上がれるところまで来たら近道も試します。列にいる人は、近くに見える退避者が歩道へ上がる進路をふさいでいれば、歩道上で斜めに退きます。退避者が足止めされると、その少し後ろの人も場所を譲ります。横断してきた人は全身が歩道に収まると、再び元の目的地へ向かいます。</p>
       <h3>白線や歩道の端に沿って進む計算</h3>
       <p>移動の始点と終点がどちらも歩ける場所でも、途中で植栽を横切ったり建物の角をかすめたりすることがあります。そこで、一歩の軌跡を線分とし、近くの境界線と交差するか、身体が触れるほど近づくかを調べます。</p>
       <p>通れない場合は、最大12回の二分探索で接触の手前まで進める位置を求めます。そこからは、残った移動分のうち境界に沿う向きだけを使います。この処理は最大2回行います。座標をFloat32に丸めた結果、境界からわずかにはみ出したときは、最大4回、当初の移動距離を超えない範囲で内側へ補正します。それでも身体が収まらなければ元の位置にとどまります。</p>
@@ -335,7 +340,7 @@ p′ = p + v′Δt
       <h3>車の加減速と歩行者との間隔</h3>
       <p>車は東西・南北に各2本ある車線を左側通行で走ります。車線を折れ線で表し、それに沿って位置と車間を測ります。前が空けば各車の巡航速度（20〜30 km/h）まで加速します。前の車に追いつきそうなら、1.35〜1.85秒の車間時間を目安に減速し、停止時には2 mの車間を取ります。黄に変わった瞬間、停止線までの距離が制動距離 <code>v² / (2 × 2.3)</code> より短い車だけがそのまま進入します（<code>v</code> は m/s、通常の減速度は2.3 m/s²）。赤では新たに交差点へ入る車は停止線の手前で待ちます。</p>
       <p>車と歩行者の間隔は、両者の動きを順に見て決めます。まず歩行者の一歩が今の車体と重なれば、その場にとどめます。次に車は、その一歩で歩行者が通った線分をもとに、どこまで進めるかを調べます。車体の長さと幅、カーブで車体の角が通る範囲、歩行者が手足を動かす余裕（0.78 m × 体格倍率）を見込み、重なりそうな区間の手前に車をとどめます。車と歩行者の間隔は、歩行者同士の回避の強さにかかわらず確保します。</p>
-      <p class="source">信号と通行の実装は <a href="#src-signal">TrafficSignal</a>、<a href="#src-vehicles">VehicleLanes / VehiclePath / VehicleTraffic</a>、<a href="#src-crosswalk-flow">CrosswalkFlow</a>、<a href="#src-crossings">CrossingClearance / CrossingExits</a>、<a href="#src-urban">UrbanGeometry / PolygonRegion</a>、<a href="#src-simulation">Simulation.step</a> にあります。地図については <a href="#src-shibuya">渋谷の地図設定</a>、<a href="#src-layout">配置データ</a>、<a href="#src-importer">データの取り込み処理</a>、<a href="#src-mesh">描画用データの読み込み処理</a>を参照してください。</p>
+      <p class="source">信号と通行の実装は <a href="#src-signal">TrafficSignal</a>、<a href="#src-signal-queue">SignalQueue</a>、<a href="#src-vehicles">VehicleLanes / VehiclePath / VehicleTraffic</a>、<a href="#src-crosswalk-flow">CrosswalkFlow</a>、<a href="#src-crossings">CrossingClearance / CrossingExits</a>、<a href="#src-urban">UrbanGeometry / PolygonRegion</a>、<a href="#src-simulation">Simulation.step</a> にあります。地図については <a href="#src-shibuya">渋谷の地図設定</a>、<a href="#src-layout">配置データ</a>、<a href="#src-importer">データの取り込み処理</a>、<a href="#src-mesh">描画用データの読み込み処理</a>を参照してください。</p>
     </section>
 
     <section id="time">
@@ -381,24 +386,24 @@ p′ = p + v′Δt
         <tr><td>歩行速度</td><td>基準1.35 m/s、個人差0.8〜1.2倍</td><td>操作パネルで基準を0.3〜3 m/sに変えると、各人が目指す歩く速さも変わる。計算上は0〜4 m/sに対応する。</td></tr>
         <tr><td>よける強さ</td><td>初期値1倍</td><td>操作パネルの「Personal space」で0〜2.5倍に調整できる。計算上の上限は3倍。0倍でも歩ける範囲や車との距離は守る。</td></tr>
         <tr><td>身体の大きさ</td><td>半径約0.223〜0.283 m</td><td>人を上から見た円で表し、体格に応じて半径を変える（0.25 mの0.89〜1.13倍）。歩道の端や建物との間には、さらに0.015 mの余裕を取る。</td></tr>
-        <tr><td>近すぎる相手との間隔</td><td>身体の隙間0.34 m以内<br>相互回避中は0.035 m以内</td><td>この距離まで近づくと、相手から離れる向きに速度を補正する。補正の係数は通常3.6、相手が戸口を通行中なら8。相手一人あたりの補正量は最大2.4。</td></tr>
+        <tr><td>近すぎる相手との間隔</td><td>通常は隙間0.34 m以内<br>相互回避中は0.035 m以内<br>信号待ち中は身体が重なるとき</td><td>この距離まで近づくと、相手から離れる向きに速度を補正する。補正の係数は通常3.6、相手が戸口を通行中なら8。相手一人あたりの補正量は最大2.4。</td></tr>
         <tr><td>前を歩く人との距離</td><td>前方1.8 m以内</td><td>従来の減速処理では、横方向のずれが2人の半径の和に0.2 mを足した範囲内なら、前の人に合わせて速度を落とす。</td></tr>
         <tr><td>接触を予測する時間</td><td>1.4〜1.85秒先まで</td><td>従来の歩行モデルは2人の半径の和に0.35 mの余裕を取る。相互回避を使うときの余裕は0.09 m × min(1.5, よける強さ)。</td></tr>
-        <tr><td>加減速と方向転換</td><td>応答時間0.3秒、加速度上限3.8 m/s²</td><td>速さや進む向きは少しずつ変わる。体は実際に進んだ方向へ、毎秒最大3.5 radずつ向きを変える。</td></tr>
+        <tr><td>加減速と方向転換</td><td>応答時間0.3秒、加速度上限3.8 m/s²</td><td>速さや進む向きは少しずつ変わる。通常の歩行では毎秒最大3.5 radで体を移動方向へ向ける。信号待ち中は胴体の向きを保つ。</td></tr>
         <tr><td>走行・退避時の速度上限</td><td>普段の希望速度 × 退避倍率 × max(1, 行動の歩速倍率) × 1.12</td><td>退避倍率は通常1、青点滅から歩道へ向かう間は最大1.25。上限が下がった後も、1回の更新で落とせる速さは最大3.8 m/s² × 経過秒数とする。</td></tr>
         <tr><td>目的地と経路</td><td>建物の入口50か所、街路の端10か所</td><td><a href="#src-layout">地図上の出入口</a>までの経路を、一辺0.75 mの格子で計算する。経路に使う格子点には歩行領域の端から0.34 mの余裕を取る。<a href="#src-navigation">経路の計算</a></td></tr>
         <tr><td>Density-guided entry</td><td>渋谷のEnhancedで初期値オン</td><td>横断歩道に入る位置を周囲の密度と対向流から選ぶ。操作パネルでオフにして、同じシードで混雑誘導の影響を比べられる。<a href="#density-entry">横断位置の選び方</a></td></tr>
         <tr><td>周囲の歩行者を探す範囲</td><td>格子の一辺2.4 m、候補は最大96人</td><td>近くの格子を順番に調べ、自分以外の歩行者を96人まで数える。そこから距離や接近のしかたで回避の相手を絞る。従来の歩行モデルが調べる半径は2.4 m。<a href="#neighbors">近くの人の探し方</a></td></tr>
         <tr><td>歩道や建物の境界を調べる区画</td><td>行間隔1 m、区画幅4 m</td><td>歩行者がこれから踏み出す位置の近くにある境界線を絞り込む。<a href="#src-urban">地図の境界判定</a></td></tr>
         <tr><td>信号の周期</td><td>基本は140秒</td><td>歩行者、東西の車、南北の車が順に通る一巡の時間。人や車が交差点に残ると、すべての信号が赤の時間を延ばす。<a href="#signals">信号の切り替え</a></td></tr>
-        <tr><td>横断歩道の手前で減速する距離</td><td>停止線まで3 m未満</td><td>歩行者用信号が青点滅または赤の間、この区間で縁石に近づく人を信号待ちとして数える。</td></tr>
+        <tr><td>縁石での信号待ち</td><td>接近の判定は3 m未満<br>待機の開始は停止位置まで垂直に0.45 m以内</td><td>青点滅・赤では、後続も同じ横断を待つ列に着くと止まる。<a href="#signal-queue">列に加わる条件</a></td></tr>
         <tr><td>位置と速度を更新する間隔</td><td>1/30秒</td><td>再生速度を変えても、1ステップで進む時間は一定。画面では0.25〜2倍速、計算上は0.1〜4倍速に対応する。処理が遅れたときは最大3ステップ分をまとめて計算する。<a href="#time">時間の扱い</a></td></tr>
       </tbody></table></div>
       <h3>歩行と信号に関する四つの数値</h3>
       <ul>
         <li><strong>平均歩行速度（Mean walking speed）</strong>は、直前の1ステップで実際に進んだ距離から求めた速さの平均です。歩道や横断歩道にいる人も、戸口を通っている人も含みます。</li>
         <li><strong>減速・停止している人の割合（Slow / stopped）</strong>は、実際の速さがその人の希望速度の45%を下回っている人の割合です。分母は歩行者全員です。希望速度が0の人と、自撮りのために減速したり止まったりしている人は、分子から除きます。</li>
-        <li><strong>信号待ちの人数（Waiting）</strong>は、青点滅または赤で縁石付近の減速判定を受けた人と、ハチ公広場の待機場所に着いて待っている人の合計です。信号が青になると0に戻ります。</li>
+        <li><strong>信号待ちの人数（Waiting）</strong>は、青点滅または赤で、予定の横断口への接近判定を受けた人と、縁石・列の後ろ・ハチ公前広場の待機場所で待機に入った人を数えます。待ちながら退避者に場所を譲る人も含みます。歩行者信号が青になると0に戻ります。</li>
         <li><strong>横断中の人数（Crossing）</strong>は、横断歩道付近で身体の一部が車道にかかっている人の数です。身体の中心が横断領域にあり、身体を表す円（半径に0.015 mを加えた範囲）が歩道に収まりきらず、車道にかかる人を数えます。車道で止まって写真を撮っている人も、歩道へ戻るまでここに含まれます。</li>
       </ul>
       <p class="small">人数の表示はシミュレーションが1ステップ進むごとに更新します。一時停止中に信号を手動で切り替えた場合も、画面には選んだ方向と現在の信号の色が表示されます。</p>
@@ -439,7 +444,7 @@ p′ = p + v′Δt
       <p>次のコマンドは、現在の渋谷の初期設定（Mixed / Enhanced、入口の混雑誘導オン）で最初の50秒間を計測します。同じシードで入口の混雑誘導を比較するには <code>--density=off</code> に変えて、もう一度実行します。初期配置は <code>--seed=137</code>、歩行モデルは <code>--model=baseline</code> で切り替えられます。</p>
       <pre><code>node --import tsx scripts/compare-crowd.ts --seed=42 --model=enhanced --preset=mixed --density=on --seconds=50</code></pre>
       <h3>検証した範囲と、実際の渋谷との違い</h3>
-      <p>渋谷の地図を使う自動テストでは、歩ける格子点からすべての目的地に到達できるか、1,000人が全赤の間は歩道にとどまり、青になると渡り始めるかを確かめます。20,000人では、初期配置と短時間の歩行で人が歩行領域に収まっているかを検査します。車については、黄信号での停止判断、車道に人が残っている間の停止、曲がった車線での車体と歩行者の間隔を検査します。<a href="#src-tests">テストの実装一覧</a></p>
+      <p>渋谷の地図を使う自動テストでは、歩ける格子点からすべての目的地に到達できるか、1,000人が全赤の間は歩道にとどまり、青になると渡り始めるかを確かめます。混雑した駅前広場では、信号を待つ人の胴体がどれだけ向きを変えるか、青で予定の横断歩道に進めるかも調べます。20,000人では、初期配置と短時間の歩行で人が歩行領域に収まっているかを検査します。車については、黄信号での停止判断、車道に人が残っている間の停止、曲がった車線での車体と歩行者の間隔を検査します。<a href="#src-tests">テストの実装一覧</a></p>
       <div class="table-wrap"><table class="wide"><thead><tr><th scope="col">対象</th><th scope="col">モデルの適用範囲</th></tr></thead><tbody>
         <tr><td>人との接触と滞留</td><td>すれ違う相手とはよける側をなるべく保ち、戸口では店から出る人に場所を空ける。狭い歩道に人が集中すると、体が重なったり列が動かなくなったりすることもある。戸口ごとに通行順を決める補助機能は比較実験で使う。</td></tr>
         <tr><td>経路と混雑</td><td>目的地への距離と方向は、開始時に求める。渋谷の歩道では前方の人を追い越せる向きを探す。ハチ公広場では密度と対向流を迂回路の選択に、密度を待機場所の選択に使う。横断口ではEnhancedの初期設定で混雑を横位置にも反映する。</td></tr>
@@ -484,16 +489,17 @@ p′ = p + v′Δt
 
     <section id="sources">
       <h2>実装ファイル一覧</h2>
-      <p>アルゴリズム本体のリンクは参照版（<code>239a201</code>）の該当ファイルを開きます。現在の既定値は<a href="#src-types">設定の定義</a>にあります。</p>
+      <p>既存手法の参照版は <code>239a201</code> です。信号待ちに関わる実装とテストには <code>main</code> のファイルへのリンクも付けています。現在の既定値は<a href="#src-types">設定の定義</a>にあります。</p>
       <ul class="sources">
         <li id="src-forecourt"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/ForecourtFlow.ts"><code>ForecourtFlow.ts</code></a> はハチ公広場の経由点とその間の区間を評価する。<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/CrossingTraffic.ts"><code>CrossingTraffic.ts</code></a> が周囲の密度と流量を測り、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/ForecourtQueue.ts"><code>ForecourtQueue.ts</code></a> はその密度を待機場所の選択にも使う。</li>
         <li id="src-crowd-model"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/ShibuyaActivities.ts"><code>ShibuyaActivities.ts</code></a> は渋谷の走者・撮影者・同行者の行動を決める。<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/ReciprocalAvoidance.ts"><code>ReciprocalAvoidance.ts</code></a> は速度と加速度の制約を満たす回避速度を選ぶ。</li>
-        <li id="src-simulation"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/Simulation.ts"><code>src/simulation/Simulation.ts</code></a> — 初期配置から、各人の進路と速度の計算、歩行後の統計の集計までを担当する。</li>
-        <li id="src-navigation"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/Navigation.ts"><code>src/simulation/Navigation.ts</code></a> — 目的地ごとにDijkstra法で距離を計算し、歩く方向を求める。目の前の目的地へまっすぐ進めるかどうかも判定する。</li>
-        <li id="src-crosswalk-flow"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/CrosswalkFlow.ts"><code>CrosswalkFlow.ts</code></a> — 横断歩道と、その中のどこを通るかを選ぶ。</li>
+        <li id="src-simulation"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Simulation.ts"><code>src/simulation/Simulation.ts</code></a> — 初期配置から、各人の進路と速度の計算、歩行後の統計の集計までを担当する。</li>
+        <li id="src-navigation"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Navigation.ts"><code>src/simulation/Navigation.ts</code></a> — 目的地ごとにDijkstra法で距離を計算し、歩く方向を求める。目の前の目的地へまっすぐ進めるかどうかも判定する。</li>
+        <li id="src-crosswalk-flow"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/CrosswalkFlow.ts"><code>CrosswalkFlow.ts</code></a> — 横断歩道と、その中のどこを通るかを選ぶ。</li>
+        <li id="src-signal-queue"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/SignalQueue.ts"><code>SignalQueue.ts</code></a> は待機中の人が使う横断歩道と向きを記録し、後続がその列に加われるかを調べる。</li>
         <li id="src-crossings"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/CrossingClearance.ts"><code>CrossingClearance.ts</code></a> と <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/CrossingExits.ts"><code>CrossingExits.ts</code></a> — 青が点滅し始めたときに戻る歩道か渡り切る歩道を選び、歩道に出る位置まで誘導する。</li>
         <li id="src-grid"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/SpatialGrid.ts"><code>src/simulation/SpatialGrid.ts</code></a> — 地図を格子に区切り、各区画にいる歩行者をすぐに取り出せるようにする。</li>
-        <li id="src-steering"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/Steering.ts"><code>src/simulation/Steering.ts</code></a> — 前の人に追いついたときの減速、すれ違うときの回避、壁から離れる動きを計算する。</li>
+        <li id="src-steering"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/Steering.ts"><code>src/simulation/Steering.ts</code></a> — 前の人に追いついたときの減速、すれ違うときの回避、壁から離れる動きを計算する。</li>
         <li id="src-sidewalk-passing"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/SidewalkPassing.ts"><code>SidewalkPassing.ts</code></a> — 歩道で前の人を追い越したり、対向する人とすれ違ったりするための進路を選ぶ。</li>
         <li id="src-trip-demand"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/PortalTripDemand.ts"><code>PortalTripDemand.ts</code></a> — 街の反対側へ向かう人、店に向かう人、店から通りに出る人に、それぞれの行き先を割り当てる。</li>
         <li id="src-portal-flow"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/PortalFlow.ts"><code>PortalFlow.ts</code></a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/DoorwayClearance.ts"><code>DoorwayClearance.ts</code></a> — 出入口で人が通る位置と順番を決め、通り抜ける間の間隔を保つ。</li>
@@ -502,7 +508,7 @@ p′ = p + v′Δt
         <li id="src-recovery"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/PortalDeadlockRecovery.ts"><code>PortalDeadlockRecovery.ts</code></a> — 出入口で人の列が動かなくなったとき、待つ人と先に通る人を決める。実験用の設定で有効にできる。</li>
         <li id="src-attention"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/PedestrianAttention.ts"><code>src/simulation/PedestrianAttention.ts</code></a> — どこをいつ見回すか、どれだけ首を振るか、分岐で足を緩めるかを決める。</li>
         <li id="src-encounters"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/EncounterState.ts"><code>src/simulation/EncounterState.ts</code></a> — すれ違う側を覚えておき、肩が触れたときに上体をどちらに傾けるかを決める。</li>
-        <li id="src-urban"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/UrbanGeometry.ts"><code>src/simulation/UrbanGeometry.ts</code></a> — 歩道や横断歩道の輪郭をもとに、身体の幅を考慮して通れる場所を調べる。境界に当たったときは、縁に沿って進める位置を探す。</li>
+        <li id="src-urban"><a href="https://github.com/shuichi/fluxity/blob/main/src/simulation/UrbanGeometry.ts"><code>src/simulation/UrbanGeometry.ts</code></a> — 歩道や横断歩道の輪郭をもとに、身体の幅を考慮して通れる場所を調べる。境界に当たったときは、縁に沿って進める位置を探す。</li>
         <li id="src-layout"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/data/shibuya/layout.json"><code>data/shibuya/layout.json</code></a> — 横断歩道、信号、駅前の地形の補正箇所、その出典を記録する。 <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/data/shibuya/expanded-portals.json"><code>expanded-portals.json</code></a> に店舗と通りの出入口の追加分を収録。</li>
         <li id="src-importer"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/scripts/import-plateau.py"><code>scripts/import-plateau.py</code></a> — PLATEAUのCityGMLから建物や路面を取り出し、歩行計算と描画に使える地図に変換する。</li>
         <li id="src-mesh"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/renderer/UrbanMesh.ts"><code>src/renderer/UrbanMesh.ts</code></a> — 地図と描画用のデータが対応していることをSHA-256で確かめて読み込む。</li>
@@ -512,15 +518,16 @@ p′ = p + v′Δt
         <li id="src-agents"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/AgentData.ts"><code>src/simulation/AgentData.ts</code></a> — 一人ひとりの位置や速度を項目別に格納し、更新前と更新後の値を持つ。</li>
         <li id="src-worker"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/simulation/SimulationWorker.ts"><code>src/simulation/SimulationWorker.ts</code></a> — 一定の時間刻みで交差点の状態を更新し、描画用のデータを送る。</li>
         <li id="src-timeline"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/app/SnapshotTimeline.ts"><code>src/app/SnapshotTimeline.ts</code></a> — 直近2回の歩行計算の結果を保持し、その間のどの時点を描けばよいかを求める。</li>
+        <li id="src-camera"><a href="https://github.com/shuichi/fluxity/blob/main/src/renderer/Camera.ts"><code>src/renderer/Camera.ts</code></a> は主観カメラの旋回と、視線を画面に投影する位置を求める。</li>
         <li id="src-instances"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/renderer/InstanceBuffer.ts"><code>src/renderer/InstanceBuffer.ts</code></a> — 歩行者の位置、体の向き、足の動きを補間し、描画用のデータにまとめる。</li>
         <li id="src-random"><a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/math/random.ts"><code>src/math/random.ts</code></a> — 指定したシードから、再現可能な乱数列を生成する。</li>
         <li id="src-types"><a href="https://github.com/shuichi/fluxity/blob/main/src/types.ts"><code>src/types.ts</code>（main）</a> — <code>DEFAULT_CONFIG</code> に初期設定をまとめ、同じファイルで計算の時間刻みと描画用データの形式を定義する。</li>
         <li id="src-tests">自動テスト（代表例）
           <ul>
-            <li>広場の経路と待機位置は <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/forecourt-flow.test.ts"><code>forecourt-flow.test.ts</code></a> と <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/forecourt-queue.test.ts"><code>forecourt-queue.test.ts</code></a>、混雑の計算と横断位置の選択は <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/crossing-traffic.test.ts"><code>crossing-traffic.test.ts</code></a> で検証する。</li>
+            <li>広場の経路と待機位置は <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/forecourt-flow.test.ts"><code>forecourt-flow.test.ts</code></a> と <a href="https://github.com/shuichi/fluxity/blob/main/src/tests/forecourt-queue.test.ts"><code>forecourt-queue.test.ts</code></a>、混雑の計算と横断位置の選択は <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/crossing-traffic.test.ts"><code>crossing-traffic.test.ts</code></a> で検証する。</li>
             <li>横断中の動きは <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/reciprocal-avoidance.test.ts"><code>reciprocal-avoidance.test.ts</code></a>（接触予測と速度・加速度の制約）、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/shibuya-activities.test.ts"><code>shibuya-activities.test.ts</code></a>（撮影者や同行者の選び方と動き）で検証する。1,000人の<a href="#crossing-comparison">比較計測</a>には <a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/scripts/compare-crowd.ts"><code>compare-crowd.ts</code></a> を使う。</li>
             <li>歩行・経路・表示は<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/simulation.test.ts">運動と近傍探索</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/urban-navigation.test.ts">ポリゴン上の経路</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/pedestrian-encounters.test.ts">すれ違いと接触</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/timeline.test.ts">Snapshot補間</a>を参照。</li>
-            <li>渋谷の交通は<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/traffic-signal-controller.test.ts">信号の切り替え</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/crossing-clearance.test.ts">歩道への退避</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/vehicle-traffic.test.ts">車両の移動制約</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/shibuya-traffic.test.ts">実地図での歩車の通行</a>を参照。</li>
+            <li>渋谷の交通は<a href="https://github.com/shuichi/fluxity/blob/main/src/tests/signal.test.ts">信号待ちと再発進</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/traffic-signal-controller.test.ts">信号の切り替え</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/crossing-clearance.test.ts">歩道への退避</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/vehicle-traffic.test.ts">車両の移動制約</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/shibuya-traffic.test.ts">実地図での歩車の通行</a>を参照。</li>
             <li>出入口は<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/shibuya-portals.test.ts">配置と旅程</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/doorway-merge.test.ts">戸口での合流</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/sidewalk-passing.test.ts">歩道でのすれ違い</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/portal-deadlock-recovery.test.ts">滞留時の補助制御</a>を参照。</li>
             <li>地図は<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/plateau-simulation.test.ts">実地図での歩行</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/src/tests/urban-mesh.test.ts">メッシュの読み込み</a>、<a href="https://github.com/shuichi/fluxity/blob/239a201249a758afad85da8663306f6a54965def/scripts/test_import_plateau.py">PLATEAUデータの変換</a>を参照。</li>
           </ul>

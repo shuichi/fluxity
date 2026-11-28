@@ -36,6 +36,73 @@ describe('scramble pedestrian signal', () => {
     expect(a.current.z[0]).toBeGreaterThan(stoppedZ + 1);
     expect(simulation.signal?.crossing).toBe(1);
   });
+  it('builds a stationary queue behind the curb and lets sidewalk traffic pass it', () => {
+    const passerZ = -24.6;
+    const scenario = {
+      ...syntheticShibuya, navigationCellSize: 2,
+      targets: [{ x: -85, z: passerZ }, ...syntheticShibuya.targets.slice(1)],
+      scramble: { ...syntheticShibuya.scramble!, crosswalks: syntheticShibuya.scramble!.crosswalks.map((mark, i) =>
+        i === 0 ? { ...mark, width: 1.6 } : mark) },
+    };
+    // One narrow crossing so opposite choices of lateral track still use the same queue.
+    const walkers = 9, passer = walkers;
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: walkers + 1, signalMode: 'allRed' }, undefined, scenario);
+    const a = sim.agents, sidewalk = sim.navigation.scramble!;
+    for (let id = 0; id < a.count; id++) {
+      const target = id === passer ? 0 : 2;
+      a.targetId[id] = target;
+      a.targetX[id] = scenario.targets[target].x; a.targetZ[id] = scenario.targets[target].z;
+      a.current.x[id] = id === passer ? -22 : -27;
+      a.current.z[id] = id === passer ? passerZ : -21 - id * 0.9;
+      a.current.heading[id] = id === passer ? -Math.PI / 2 : 0;
+      a.current.vx[id] = a.current.vz[id] = 0;
+    }
+    for (let step = 0; step < 450; step++) {
+      sim.step();
+      expect(sim.signal!.crossing).toBe(0);
+    }
+    expect(a.current.x[passer]).toBeLessThan(-36); // Passed the waiting line during red.
+    expect(a.current.z[0]).toBeGreaterThan(-20); // The front walked on from the three-metre braking zone.
+    expect(a.current.z[walkers - 1]).toBeLessThan(-21.5); // The queue extends beyond that zone.
+    expect(sim.signal!.waiting).toBe(walkers);
+    const x = a.current.x.slice(0, walkers), z = a.current.z.slice(0, walkers);
+    const heading = a.current.heading.slice(0, walkers), phase = a.current.phase.slice(0, walkers);
+    for (let step = 0; step < 90; step++) {
+      sim.step();
+      for (let id = 0; id < walkers; id++) {
+        expect(Math.hypot(a.current.x[id] - x[id], a.current.z[id] - z[id])).toBeLessThan(0.02);
+        expect(a.current.heading[id]).toBe(heading[id]);
+        expect(a.current.phase[id]).toBeCloseTo(phase[id], 2);
+        expect(a.stalledTime[id]).toBe(0);
+      }
+    }
+    sim.updateSettings({ signalMode: 'pedestrian' });
+    const entered = new Set<number>();
+    for (let step = 0; step < 600 && entered.size < walkers; step++) {
+      sim.step();
+      for (let id = 0; id < walkers; id++) {
+        if (!sidewalk.isSidewalk(a.current.x[id], a.current.z[id], a.radius[id] + 0.015)) entered.add(id);
+      }
+    }
+    expect(entered.size).toBe(walkers);
+  });
+  it('joins a staggered row only after stalling at the curb for the same crossing and bank', () => {
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, signalMode: 'allRed' }, undefined, syntheticShibuya);
+    const a = sim.agents, queue = sim['signalQueue']!;
+    // The front walker is 0.82 m ahead and 0.96 m to the side of the approaching walker.
+    a.radius.fill(0.25); a.current.x.set([-27, -26.04]); a.current.z.set([-20.345, -19.525]);
+    sim.grid.rebuild(a.current.x, a.current.z, a.count);
+    queue.route[1] = 1;
+    queue.beginStep();
+    const curb = sim.navigation.scramble!.brakeAtCurb(a.current.x[0], a.current.z[0], { x: 0, z: 1 }, a.radius[0] + 0.015);
+    expect(curb).toBeCloseTo(2);
+    expect(queue.hasArrived(0, 4, 1, curb, 0, 1)).toBe(false);
+    a.stalledTime[0] = 1;
+    expect(queue.hasArrived(0, 4, 1, curb, 0, 1)).toBe(true);
+    expect(queue.hasArrived(0, 4, -1, curb, 0, 1)).toBe(false);
+    expect(queue.hasArrived(0, 4, 2, curb, 0, 1)).toBe(false);
+    expect(queue.hasArrived(0, 4, 1, Infinity, 0, 1)).toBe(false);
+  });
   it('returns a slow recent entrant to the nearer curb as soon as green flashes', () => {
     const simulation = pedestrian('pedestrian', -8), a = simulation.agents;
     simulation.updateSettings({ walkingSpeed: 1 });
@@ -74,16 +141,42 @@ describe('scramble pedestrian signal', () => {
   it('lets a waiting pedestrian yield while another pedestrian clears the curb', () => {
     const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 2, signalMode: 'allRed' }, undefined, syntheticShibuya);
     const a = simulation.agents;
-    a.current.x.fill(-27); a.current.z.set([17.6, 18.5]);
-    a.current.vx.fill(0); a.current.vz.set([1.3, 0]);
+    a.current.x.set([-43, -27]); a.current.z.set([37, 18.5]);
+    a.current.vx.fill(0); a.current.vz.fill(0);
     a.targetId.set([2, 0]); a.targetX.fill(-27); a.targetZ.set([52, -52]);
+    for (let step = 0; step < 120; step++) simulation.step();
+    expect(simulation.signal?.waiting).toBe(1);
+    // Place the last crosser directly in front of a person already waiting on the sidewalk.
+    const startX = a.current.x[1], startZ = a.current.z[1];
+    a.current.x[0] = startX; a.current.z[0] = 17.6;
+    a.current.vx[0] = 0; a.current.vz[0] = 1.3;
+    let yielded = 0;
     for (let step = 0; step < 240; step++) {
       simulation.step();
-      expect(simulation.navigation.scramble!.isSidewalk(a.current.x[1], a.current.z[1], a.radius[1])).toBe(true);
+      expect(simulation.navigation.scramble!.isSidewalk(a.current.x[1], a.current.z[1], a.radius[1] + 0.015)).toBe(true);
+      yielded = Math.max(yielded, Math.hypot(a.current.x[1] - startX, a.current.z[1] - startZ));
     }
+    expect(yielded).toBeGreaterThan(0.1);
     expect(a.current.z[0]).toBeGreaterThan(23);
     expect(simulation.signal?.crossing).toBe(0);
     expect(simulation.signal?.waiting).toBe(1);
+  });
+  it('separates overlapping bodies while both pedestrians wait on red', () => {
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 2, signalMode: 'allRed' }, undefined, syntheticShibuya);
+    const a = sim.agents;
+    a.radius.fill(0.25); a.current.x.set([-27, -29]); a.current.z.fill(18.55);
+    a.current.vx.fill(0); a.current.vz.fill(0);
+    a.targetId.fill(0); a.targetX.fill(-27); a.targetZ.fill(-52);
+    for (let step = 0; step < 120; step++) sim.step();
+    expect(sim.signal!.waiting).toBe(2);
+    // Displace one waiting walker sideways into their neighbor, as in a densely packed row.
+    a.current.x[1] = a.current.x[0] + 0.30; a.current.z[1] = a.current.z[0];
+    for (let step = 0; step < 90; step++) {
+      sim.step();
+      expect(sim.signal!.crossing).toBe(0);
+      expect(sim.signal!.waiting).toBe(2);
+    }
+    expect(Math.hypot(a.current.x[1] - a.current.x[0], a.current.z[1] - a.current.z[0])).toBeGreaterThanOrEqual(0.49);
   });
   it('is deterministic across signal cycles and has no red incursions in a dense queue', () => {
     const first = new Simulation({ ...DEFAULT_CONFIG, count: 240, signalMode: 'allRed' }, undefined, syntheticShibuya);

@@ -190,3 +190,34 @@ it('waits to select the next track while the walker is on a different zebra', ()
   expect(flow.guide(0, 0, x, z, east, radius, direction)).toBe(true);
   expect(flow.activeCrossing(0)).toBe(-3);
 });
+
+it('walks past the east curb on red and waits at the south crossing used by the trip', () => {
+  const sim = new Simulation({ ...DEFAULT_CONFIG, count: 1, crowdPreset: 'none', signalMode: 'allRed' });
+  const a = sim.agents, flow = sim['crosswalkFlow']!, urban = sim.navigation.urban!;
+  const southwest = shibuya.portals!.findIndex(p => p.id === 'southwest-shop');
+  const east = shibuya.portals!.findIndex(p => p.id === 'east-shop');
+  const x = 24.08, z = 13.50, radius = 0.255, direction = { x: 0, z: 0 };
+  sim.navigation.direction(x, z, east, shibuya.targets[east].x, shibuya.targets[east].z, direction, radius);
+  const curb = urban.brakeAtCurb(x, z, direction, radius);
+  const eastRoute = flow.plannedRoute(0, x, z, east), southRoute = flow.plannedRoute(0, x, z, southwest);
+  expect(curb).toBeLessThan(0.45);
+  expect([eastRoute, southRoute]).toEqual([-3, -2]);
+  expect(flow.approachingMouth(eastRoute, x, z, curb)).toBe(true);
+  expect(flow.approachingMouth(southRoute, x, z, curb)).toBe(false);
+
+  // This southwest-bound walker previously froze at the first step, 15 m from their own mouth.
+  a.current.x[0] = 26.75; a.current.z[0] = 15.95; a.current.vx[0] = a.current.vz[0] = 0;
+  a.radius[0] = radius - 0.015;
+  a.targetId[0] = southwest; a.targetX[0] = shibuya.targets[southwest].x; a.targetZ[0] = shibuya.targets[southwest].z;
+  let distance = Infinity;
+  for (let step = 0; step < 600; step++) {
+    sim.step();
+    const px = a.current.x[0], pz = a.current.z[0], landing = flow.nearestLanding(southRoute, px, pz);
+    distance = Math.hypot(landing.x - px, landing.z - pz);
+    expect(urban.isSidewalk(px, pz, a.radius[0] + 0.015)).toBe(true);
+    if (distance > 5) expect(sim.signal!.waiting).toBe(0);
+  }
+  expect(distance).toBeLessThan(1);
+  expect(sim.signal!.waiting).toBe(1);
+  expect(Math.hypot(a.current.vx[0], a.current.vz[0])).toBe(0);
+});

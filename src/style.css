@@ -862,10 +862,63 @@ input[type=range]::-moz-range-thumb {
 }
 
 .person-view-label {
+  display:flex;
+  align-items:center;
+  gap:10px;
   padding:0 8px 0 3px;
   color:#4a683e;
   font-size:11px;
   font-weight:600;
+}
+
+.gaze-key {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  font-weight:450;
+}
+
+.gaze-key::before, #gaze-marker {
+  border:2px solid #d22535;
+  border-radius:50%;
+}
+
+.gaze-key::before {
+  content:"";
+  width:7px;
+  height:7px;
+}
+
+#gaze-marker {
+  position:absolute;
+  z-index:2;
+  top:50%;
+  width:15px;
+  height:15px;
+  transform:translate(-50%, -50%);
+  box-shadow:0 0 0 1px #fff, inset 0 0 0 1px #fffd, 0 1px 4px #0009;
+  pointer-events:none;
+}
+
+#gaze-marker[data-edge=left]::after, #gaze-marker[data-edge=right]::after {
+  content:"";
+  position:absolute;
+  top:50%;
+  border:4px solid transparent;
+  transform:translateY(-50%);
+  filter:drop-shadow(0 0 1px white);
+}
+
+#gaze-marker[data-edge=left]::after {
+  right:calc(100% + 4px);
+  border-right:6px solid #d22535;
+  border-left:0;
+}
+
+#gaze-marker[data-edge=right]::after {
+  left:calc(100% + 4px);
+  border-left:6px solid #d22535;
+  border-right:0;
 }
 
 #return-view {

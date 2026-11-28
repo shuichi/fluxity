@@ -163,6 +163,39 @@ describe('polygon ground geometry', () => {
 });
 
 describe('real-map navigation and signal', () => {
+  it('follows the Hachikō sidewalk around a red crossing on a trip staying on the same bank', () => {
+    const sim = new Simulation({ ...DEFAULT_CONFIG, count: 1, signalMode: 'allRed', crowdPreset: 'none' });
+    const nav = sim.navigation, sidewalk = nav.urban!.sidewalks, a = sim.agents;
+    const target = shibuya.portals!.findIndex(p => p.id === 'south-street-east'), goal = shibuya.targets[target];
+    const x = 11.6, z = 17, radius = 0.27, direction = { x: 0, z: 0 };
+    // The ordinary field cuts the corner over the diagonal paint on its way south along the plaza.
+    nav.direction(x, z, target, goal.x, goal.z, direction, radius);
+    expect(sidewalk.lineInside(x, z, x + direction.x, z + direction.z, radius)).toBe(false);
+    expect(nav.sidewalkDirection(x, z, target, goal.x, goal.z, direction, radius)).toBe(true);
+    expect(sidewalk.lineInside(x, z, x + direction.x, z + direction.z, radius)).toBe(true);
+
+    a.current.x[0] = x; a.current.z[0] = z; a.current.vx[0] = a.current.vz[0] = 0;
+    a.radius[0] = radius - 0.015;
+    a.targetId[0] = target; a.targetX[0] = goal.x; a.targetZ[0] = goal.z;
+    for (let step = 0; step < 240; step++) {
+      const oldX = a.current.x[0], oldZ = a.current.z[0];
+      sim.step();
+      expect(sidewalk.lineInside(oldX, oldZ, a.current.x[0], a.current.z[0], a.radius[0] + 0.015)).toBe(true);
+      expect(sim.signal!.waiting).toBe(0);
+    }
+    expect(a.current.z[0]).toBeGreaterThan(z + 6);
+  });
+  it('retains the braked direction when the sidewalk offers no progress toward the destination', () => {
+    const nav = new Navigation(shibuya), x = 13.4, z = 15, radius = 0.27;
+    const target = shibuya.portals!.findIndex(p => p.id === 'north-shop'), goal = shibuya.targets[target];
+    const direction = { x: 0, z: 0 };
+    nav.direction(x, z, target, goal.x, goal.z, direction, radius);
+    expect(nav.urban!.isSidewalk(x, z, radius)).toBe(true);
+    expect(nav.urban!.brakeAtCurb(x, z, direction, radius)).toBeLessThan(0.45);
+    const braked = { ...direction };
+    expect(nav.sidewalkDirection(x, z, target, goal.x, goal.z, direction, radius)).toBe(false);
+    expect(direction).toEqual(braked);
+  });
   it('excludes disconnected courtyards and spawns only on reachable sidewalks', () => {
     const simulation = new Simulation({ ...DEFAULT_CONFIG, count: 300 }, undefined, testScenario), n = simulation.navigation;
     const courtyardPoint = point(20,0);

@@ -32,10 +32,24 @@ it('keeps later arrivals on the square through red, counts them waiting and rele
     a.current.x[id] = 15 + (id % 8) * 0.72; a.current.z[id] = 19 + Math.floor(id / 8) * 0.72;
     a.current.vx[id] = a.current.vz[id] = 0;
   }
+  const settledSteps = new Uint16Array(a.count), turn = new Float32Array(a.count);
+  let largestTurn = 0;
   for (let step = 0; step < 600; step++) {
+    const previousHeading = a.current.heading;
     sim.step();
     expect(sim.signal!.crossing).toBe(0);
+    for (let id = 0; id < a.count; id++) {
+      if (!queue.settled[id]) {
+        settledSteps[id] = 0; turn[id] = 0;
+        continue;
+      }
+      // Allow one second to finish braking. Neighbors should not turn a waiting body around.
+      if (++settledSteps[id] <= 30) continue;
+      turn[id] += Math.abs(a.current.heading[id] - previousHeading[id]);
+      largestTurn = Math.max(largestTurn, turn[id]);
+    }
   }
+  expect(largestTurn).toBeLessThan(Math.PI / 2);
   const routes = queue.route.slice(), settled = queue.settled.reduce((sum, value) => sum + value, 0);
   expect(settled).toBeGreaterThan(12);
   expect(sim.signal!.waiting).toBeGreaterThan(settled); // Both the curbside front row and the overflow.

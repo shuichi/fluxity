@@ -11,10 +11,10 @@ const harness = vi.hoisted(() => ({
     setPaused: vi.fn(), setConfig: vi.fn(), setStatus: vi.fn(),
     renderBenchmark: vi.fn(), setBenchmarkRunning: vi.fn(), setBenchmarkStatus: vi.fn(),
     showError: vi.fn(), destroy: vi.fn(),
-    setSignal: vi.fn(), setPersonView: vi.fn(), setCameraActive: vi.fn(), setSubjectAvailable: vi.fn(),
+    setSignal: vi.fn(), setPersonView: vi.fn(), setGazeMarker: vi.fn(), setCameraActive: vi.fn(), setSubjectAvailable: vi.fn(),
   },
   renderer: {
-    setScenario: vi.fn(), destroy: vi.fn(), camera: { reset: vi.fn(), setView: vi.fn(), frameParticipant: vi.fn(), target: new Float32Array(3) },
+    setScenario: vi.fn(), destroy: vi.fn(), camera: { reset: vi.fn(), setView: vi.fn(), frameParticipant: vi.fn(), target: new Float32Array(3), gazeScreenX: -0.45 },
     setPhotographicAppearance: vi.fn(),
     canPlacePersonCamera: vi.fn(() => true),
     pickPerson: vi.fn<(x: number, y: number) => Promise<PickedPerson | null>>(),
@@ -37,6 +37,7 @@ vi.mock('../app/Controls', () => ({
     readonly setSubjectAvailable = harness.controls.setSubjectAvailable;
     readonly setCameraActive = harness.controls.setCameraActive;
     readonly setPersonView = harness.controls.setPersonView;
+    readonly setGazeMarker = harness.controls.setGazeMarker;
     readonly renderBenchmark = harness.controls.renderBenchmark;
     readonly setBenchmarkRunning = harness.controls.setBenchmarkRunning;
     readonly setBenchmarkStatus = harness.controls.setBenchmarkStatus;
@@ -163,9 +164,11 @@ describe('application / worker integration', () => {
     worker.emit(worker.snapshot(1));
     frame();
     expect(harness.renderer.render.mock.lastCall).toContainEqual(expect.objectContaining({ followedId: 0 }));
+    expect(harness.controls.setGazeMarker).toHaveBeenCalledExactlyOnceWith(-0.45);
     controls().onReturnView();
     frame();
     expect(harness.controls.setPersonView).toHaveBeenLastCalledWith(false);
+    expect(harness.controls.setGazeMarker).toHaveBeenCalledTimes(1);
     expect(harness.renderer.render.mock.lastCall).toContainEqual(expect.objectContaining({ followedId: undefined }));
     expect(harness.renderer.camera.reset).not.toHaveBeenCalled();
     expect(worker.latestInit()).toBe(init);

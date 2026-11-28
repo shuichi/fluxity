@@ -351,7 +351,7 @@ export class WebGPURenderer {
   }
 
   render(previous: Float32Array, current: Float32Array, count: number, alpha: number,
-    options: { quality: Quality; debug: boolean; signal?: SignalState; simulationTime?: number; followedId?: number;
+    options: { quality: Quality; debug: boolean; frameSeconds: number; signal?: SignalState; simulationTime?: number; followedId?: number;
       vehicles?: { previous: Float32Array; current: Float32Array } }): RenderStats {
     const start = performance.now();
     if (this.dead) return { visible: 0, lodCounts: [0,0,0], drawCalls: 0, triangles: 0, cpuMs: 0, resolution: 'GPU disconnected' };
@@ -365,7 +365,7 @@ export class WebGPURenderer {
       sampleEyePose(this.followedPose, from, current, followedId * SNAPSHOT_STRIDE, t);
       person = this.followedPose;
     }
-    this.camera.update(this.width / this.height, person);
+    this.camera.update(this.width / this.height, options.frameSeconds, person);
     this.instances.update(from, current, n, t, this.camera, this.height, options.quality, followedId);
     const carCount = options.vehicles ? this.vehicleInstances.update(options.vehicles.previous, options.vehicles.current, t) : 0;
     this.uniforms.set(this.camera.viewProjection, 0);

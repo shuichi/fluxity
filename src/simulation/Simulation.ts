@@ -22,6 +22,7 @@ import { CrossingClearance } from './CrossingClearance';
 import { CrosswalkFlow } from './CrosswalkFlow';
 import { ForecourtFlow } from './ForecourtFlow';
 import { ForecourtQueue } from './ForecourtQueue';
+import { SignalQueue } from './SignalQueue';
 import { ShibuyaActivities } from './ShibuyaActivities';
 import { VehicleTraffic } from './VehicleTraffic';
 
@@ -62,6 +63,8 @@ export class Simulation {
   private readonly crosswalkFlow?: CrosswalkFlow;
   private readonly forecourt?: ForecourtFlow;
   private readonly forecourtQueue?: ForecourtQueue;
+  private readonly signalQueue?: SignalQueue;
+  private readonly holdingContext = { holdingAtSignal: true };
   private readonly portals: PortalFlow | undefined;
   private readonly tripDemand?: PortalTripDemand;
   private readonly doorways?: DoorwayClearance;
@@ -100,8 +103,11 @@ export class Simulation {
     this.traffic = this.navigation.scramble ? new TrafficSignal(parseSignalMode(config.signalMode)) : undefined;
     if (this.scenario.vehicleLanes?.length) this.vehicles = new VehicleTraffic(config.seed, this.agents, this.scenario.vehicleLanes);
     if (this.traffic) this.crossings = new CrossingClearance(this.navigation, this.grid, count);
-    if (this.scenario.scramble?.crosswalks.length) this.crosswalkFlow = new CrosswalkFlow(this.navigation, count, config.seed,
-      this.enhancedCrossing && (config.densityGuidance ?? DEFAULT_CONFIG.densityGuidance));
+    if (this.scenario.scramble?.crosswalks.length) {
+      this.crosswalkFlow = new CrosswalkFlow(this.navigation, count, config.seed,
+        this.enhancedCrossing && (config.densityGuidance ?? DEFAULT_CONFIG.densityGuidance));
+      this.signalQueue = new SignalQueue(this.agents, this.grid, this.navigation);
+    }
     if (this.scenario.forecourtRouting && this.navigation.urban && this.crosswalkFlow) {
       this.forecourt = new ForecourtFlow(this.navigation, this.agents, config.seed);
       this.forecourtQueue = new ForecourtQueue(this.navigation, this.agents, this.crosswalkFlow, this.forecourt.traffic, config.seed);
@@ -166,6 +172,7 @@ export class Simulation {
   }
   private readonly newPerson = (i: number): void => {
     const a = this.agents;
+    if (this.signalQueue) this.signalQueue.route[i] = 0;
     this.forecourt?.reset(i);
     this.forecourtQueue?.reset(i);
     this.sidewalkPassing?.reset(i);
@@ -246,6 +253,7 @@ export class Simulation {
     this.grid.rebuild(state.x, state.z, a.count);
   }
   private assignTarget(id: number, targetId: number): void {
+    if (this.signalQueue) this.signalQueue.route[id] = this.signalQueue.previous[id] = 0;
     this.forecourt?.reset(id);
     this.forecourtQueue?.reset(id);
     this.sidewalkPassing?.reset(id);
@@ -305,12 +313,12 @@ export class Simulation {
       && (this.signal?.pedestrian === 'green' || !this.navigation.urban?.occupiesCrossing(x, z, radius + 0.015));
   };
 
-  private writeMotion(i: number, dt: number, x: number, z: number): number {
+  private writeMotion(i: number, dt: number, x: number, z: number, holdingAtSignal = false): number {
     const a = this.agents, read = a.current, write = a.next;
     const vx = (x - read.x[i]) / dt, vz = (z - read.z[i]) / dt;
     const speed = Math.hypot(vx, vz);
     let heading = read.heading[i];
-    if (speed > 0.045) {
+    if (!holdingAtSignal && speed > 0.045) {
       const desiredHeading = Math.atan2(vx, vz);
       let difference = ((desiredHeading - heading + Math.PI) % TAU + TAU) % TAU - Math.PI;
       difference = Math.max(-3.5 * dt, Math.min(3.5 * dt, difference));
@@ -319,7 +327,7 @@ export class Simulation {
     write.x[i] = x; write.z[i] = z; write.vx[i] = vx; write.vz[i] = vz; write.heading[i] = heading;
     // Unbounded phase avoids interpolation seams; stride length is measured in world meters.
     write.phase[i] = read.phase[i] + speed * dt * 4.5;
-    a.stalledTime[i] = !this.activities?.stationary[i] && speed < a.preferredSpeed[i] * 0.2 ? a.stalledTime[i] + dt : 0;
+    a.stalledTime[i] = !holdingAtSignal && !this.activities?.stationary[i] && speed < a.preferredSpeed[i] * 0.2 ? a.stalledTime[i] + dt : 0;
     return speed;
   }
   step(dt = FIXED_DT): void {
@@ -329,7 +337,7 @@ export class Simulation {
     const scramble = this.navigation.scramble;
     const pedestrian = this.signal?.pedestrian;
     const crossingClosed = pedestrian === 'red' || pedestrian === 'flashingGreen';
-    const clearingCrossers = crossingClosed && (this.signal?.crossing ?? 0) > 0;
+    this.signalQueue?.beginStep();
     this.grid.rebuild(read.x, read.z, a.count);
     const activities = this.activities;
     if (activities && this.signal) activities.beginStep(dt, this.signal);
@@ -384,34 +392,59 @@ export class Simulation {
       const waitingAtMouth = !order && !clearRoad && !yielding && this.portals?.waitingAtMouth;
       const onOrdinaryTrip = !clearRoad && !order && !yielding && !waitingAtMouth && !steppingAside;
       const queue = this.forecourtQueue;
+      const signalQueue = this.signalQueue;
+      const previousRoute = onOrdinaryTrip ? signalQueue?.previous[i] ?? 0 : 0;
+      const heldRoute = sidewalkOnly ? previousRoute : 0;
       if (!onOrdinaryTrip) queue?.reset(i);
-      const staging = sidewalkOnly && onOrdinaryTrip && queue?.guide(i, this.stepCount, this.direction);
+      const staging = !heldRoute && sidewalkOnly && onOrdinaryTrip && queue?.guide(i, this.stepCount, this.direction);
       const queuedRoute = !crossingClosed && queue ? queue.route[i] : 0;
       if (clearance) this.crosswalkFlow?.reset(i);
-      const followingTrack = !staging && !clearance && this.crosswalkFlow?.guide(i, a.generation[i],
+      const followingTrack = !heldRoute && !staging && !clearance && this.crosswalkFlow?.guide(i, a.generation[i],
         read.x[i], read.z[i], a.targetId[i], radius, this.direction,
-        this.enhancedCrossing ? activities?.groupTrackKey[i] : undefined, activities?.groupSlot[i], queuedRoute);
+        this.enhancedCrossing ? activities?.groupTrackKey[i] : undefined, activities?.groupSlot[i], queuedRoute || previousRoute);
       if (queuedRoute && followingTrack) queue!.reset(i);
       const returningToCrossing = queuedRoute && !followingTrack && queue!.approach(i, this.direction);
-      if (!staging && !returningToCrossing && !followingTrack && !clearance) {
+      if (heldRoute) {
+        // Keep the approach bearing for a natural glance while the feet are at rest.
+        this.direction.x = Math.sin(read.heading[i]); this.direction.z = Math.cos(read.heading[i]);
+      } else if (!staging && !returningToCrossing && !followingTrack && !clearance) {
         this.navigation.direction(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius);
         if (onOrdinaryTrip) this.forecourt?.guide(i, this.direction);
       } else this.forecourt?.reset(i);
       const crossingPace = clearance
         ? clearance.guide(i, read.x[i], read.z[i], radius, dt, a.preferredSpeed[i], this.direction) : 1;
       if (this.sidewalkPassing) {
-        if (socialAvoidance && onOrdinaryTrip && !followingTrack && !staging) {
+        if (socialAvoidance && onOrdinaryTrip && !followingTrack && !staging && !heldRoute) {
           this.sidewalkPassing.guide(i, this.stepCount, this.direction);
         } else this.sidewalkPassing.reset(i);
       }
       if (order) recovery!.guide(i, this.direction);
       else if (yielding) courtesy!.guide(i, this.direction);
       else if (waitingAtMouth) { this.direction.x = 0; this.direction.z = 0; }
-      const routeX = this.direction.x, routeZ = this.direction.z;
-      const makeLandingRoom = clearingCrossers && this.grid.counts[this.grid.cells[i]] > 1;
-      const waitingAtCurb = sidewalkOnly && scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius, makeLandingRoom);
-      const waitingAtSignal = waitingAtCurb || (!!staging && !!queue!.settled[i]);
+      let routeX = this.direction.x, routeZ = this.direction.z;
+      const approachingOnRed = sidewalkOnly && !heldRoute && !staging;
+      let curbDistance = approachingOnRed
+        ? scramble!.brakeAtCurb(read.x[i], read.z[i], this.direction, radius) : Infinity;
+      const intendedRoute = approachingOnRed && onOrdinaryTrip
+        ? this.crosswalkFlow?.plannedRoute(i, read.x[i], read.z[i], a.targetId[i]) ?? 0 : 0;
+      if (Number.isFinite(curbDistance) && onOrdinaryTrip && this.crosswalkFlow
+        && (!intendedRoute || !this.crosswalkFlow.approachingMouth(intendedRoute, read.x[i], read.z[i], curbDistance))) {
+        // Follow the sidewalk past this corner, including when the trip will use a different zebra.
+        if (this.navigation.sidewalkDirection(read.x[i], read.z[i], a.targetId[i], a.targetX[i], a.targetZ[i], this.direction, radius)) {
+          routeX = this.direction.x; routeZ = this.direction.z;
+        }
+        curbDistance = Infinity;
+      }
+      let waitingRoute = heldRoute;
+      if (sidewalkOnly && onOrdinaryTrip && signalQueue) {
+        if (staging) waitingRoute = queue!.settled[i] ? queue!.route[i] : 0;
+        else if (intendedRoute && signalQueue.hasArrived(i, this.stepCount, intendedRoute, curbDistance, routeX, routeZ)) waitingRoute = intendedRoute;
+        signalQueue.route[i] = waitingRoute;
+      }
+      const holdingAtSignal = waitingRoute !== 0;
+      const waitingAtSignal = holdingAtSignal || (Number.isFinite(curbDistance) && (!!intendedRoute || !this.crosswalkFlow));
       if (waitingAtSignal) waiting++;
+      if (holdingAtSignal) { this.direction.x = 0; this.direction.z = 0; }
       const allowHesitation = !clearRoad && !waitingAtSignal && !staging && !waitingAtMouth && !this.doorways?.cells[this.grid.cells[i]];
       const freeToAct = allowHesitation && !order && !yielding && !steppingAside;
       const activityPace = activities && freeToAct ? activities.guide(i, this.direction, this.enhancedCrossing) : 1;
@@ -425,10 +458,10 @@ export class Simulation {
       this.encounterContext.speedLimit = speedLimit;
       const reciprocal = this.enhancedCrossing && followingTrack && !crossingClosed && freeToAct && !takingPhoto;
       this.avoidance.compute(i, a, this.grid, this.direction, this.settings, this.velocity, speedScale, stayOnSidewalk,
-        reciprocal ? this.encounterContext : undefined);
+        holdingAtSignal ? this.holdingContext : reciprocal ? this.encounterContext : undefined);
       if (takingPhoto || (order === 'wait' && !this.avoidance.yieldingAtCurb)) {
         this.velocity.x = 0; this.velocity.z = 0;
-      } else if (!this.avoidance.resolvedNextVelocity && !order && !clearRoad && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
+      } else if (!holdingAtSignal && !this.avoidance.resolvedNextVelocity && !order && !clearRoad && !yielding && !steppingAside && !this.avoidance.yieldingAtCurb) {
         headway?.limit(i, this.stepCount, this.time, this.direction, this.velocity);
       }
       let vx = this.velocity.x, vz = this.velocity.z;
@@ -439,6 +472,10 @@ export class Simulation {
           ax *= PEDESTRIAN_ACCELERATION / acceleration; az *= PEDESTRIAN_ACCELERATION / acceleration;
         }
         vx = read.vx[i] + ax * dt; vz = read.vz[i] + az * dt;
+        if (holdingAtSignal && this.velocity.x === 0 && this.velocity.z === 0
+          && Math.hypot(read.vx[i], read.vz[i]) <= Math.min(0.045, PEDESTRIAN_ACCELERATION * dt)) {
+          vx = 0; vz = 0;
+        }
       }
       const velocityLength = Math.hypot(vx, vz);
       if (velocityLength > speedLimit && velocityLength > 0) { vx *= speedLimit / velocityLength; vz *= speedLimit / velocityLength; }
@@ -473,7 +510,7 @@ export class Simulation {
         if (!onSidewalk && (!this.navigation.urban || this.navigation.urban.occupiesCrossing(Math.fround(x), Math.fround(z), radius))) crossing++;
         this.crossings!.observeStep(i, onSidewalk);
       }
-      const speed = this.writeMotion(i, dt, x, z);
+      const speed = this.writeMotion(i, dt, x, z, holdingAtSignal);
       totalSpeed += speed;
       if (!takingPhoto && speed < a.preferredSpeed[i] * 0.45) stopped++;
     }

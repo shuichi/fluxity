@@ -87,18 +87,19 @@ export class ScrambleGeometry {
     if (z * dz < 0) distance = Math.min(distance, (Math.abs(z) - h) / Math.abs(dz));
     return Math.max(0, distance);
   }
-  brakeAtCurb(x: number, z: number, direction: Direction, radius: number, makeSpace = false): boolean {
-    if (this.distanceToCurb(x, z, direction.x, direction.z, radius) >= 3) return false;
+  brakeAtCurb(x: number, z: number, direction: Direction, radius: number): number {
+    if (this.distanceToCurb(x, z, direction.x, direction.z, radius) >= 3) return Infinity;
     const curb = this.halfWidth + radius + 0.08;
+    let clearance = Infinity;
     const normalSpeed = (position: number, velocity: number) => {
       if (position * velocity >= 0) return velocity;
       const distance = Math.abs(position) - curb;
-      if (makeSpace && distance < 2.1) return Math.sign(position) * Math.min(1.15, 2.1 - distance);
+      if (distance / Math.abs(velocity) < 3) clearance = Math.min(clearance, Math.max(0, distance));
       return velocity * Math.max(0, Math.min(1, distance / 2.2));
     };
     direction.x = normalSpeed(x, direction.x);
     direction.z = normalSpeed(z, direction.z);
-    return true;
+    return clearance;
   }
   /** Clip an integration step at the curb or zebra edge, including neighbor-induced motion. */
   constrain(x: number, z: number, nextX: number, nextZ: number, radius: number, sidewalkOnly: boolean, result: Direction): void {

@@ -20,6 +20,12 @@ const gridRings = Array.from({ length: (2 * MAX_SCAN_RINGS + 1) ** 2 }, (_, i) =
 
 export interface Velocity { x: number; z: number }
 
+function limitSpeed(vx: number, vz: number, limit: number, result: Velocity): void {
+  const speed = Math.hypot(vx, vz);
+  if (speed > limit && speed > 0) { vx *= limit / speed; vz *= limit / speed; }
+  result.x = vx; result.z = vz;
+}
+
 /** Current crossing waypoints, in world coordinates. A missing waypoint uses NaN. */
 export interface CrossingPriority {
   readonly clearing: Uint8Array;
@@ -30,6 +36,7 @@ export interface CrossingPriority {
 
 export interface AvoidanceContext {
   reciprocal?: boolean;
+  holdingAtSignal?: boolean;
   speedLimit?: number;
   dt?: number;
   /** Neighbors committed to a stationary activity cannot share a course correction. */
@@ -136,10 +143,13 @@ export class Steering implements LocalAvoidance {
     const curb = sidewalkOnly ? this.crossing : undefined;
     const nearDoorway = this.doorwayCells?.[cell];
     const encounters = this.encounters;
-    const mayChoose = !!encounters && !nearDoorway && settings.avoidanceStrength > 0 && preferredSpeed > 0;
-    const reciprocal = !!context?.reciprocal && settings.avoidanceStrength > 0 && !sidewalkOnly && !nearDoorway
+    const holding = context?.holdingAtSignal;
+    const avoidance = settings.avoidanceStrength;
+    const mayChoose = !holding && !!encounters && !nearDoorway && avoidance > 0 && preferredSpeed > 0;
+    const reciprocal = !holding && !!context?.reciprocal && avoidance > 0 && !sidewalkOnly && !nearDoorway
       && !this.crossing?.clearing[id] && !context.stationary?.[id] && preferredSpeed > 0;
-    const padding = 0.09 * Math.min(1.5, settings.avoidanceStrength);
+    const padding = 0.09 * Math.min(1.5, avoidance);
+    const personalPadding = holding ? 0 : reciprocal ? 0.035 : 0.34;
     if (reciprocal) this.reciprocal.reset();
     const reconsider = mayChoose && encounters!.reconsiderIn[id] <= 0;
     const horizon = mayChoose ? encounters!.horizon[id] : 1.6;
@@ -204,15 +214,13 @@ export class Steering implements LocalAvoidance {
             }
           }
           // Hard contact retains a small separating response. Anticipation is handled by the velocity constraints.
-          const personalSpace = radius + (reciprocal ? 0.035 : 0.34);
+          const personalSpace = radius + personalPadding;
           if (distance < personalSpace) {
             // Pedestrians on the public sidewalk yield to a walker committed to the narrow doorway.
             const stiffness = agents.portalStage[j] ? 8 : 3.6;
             const strength = Math.min(2.4, (personalSpace - distance) * stiffness);
             pushX -= dx / distance * strength; pushZ -= dz / distance * strength;
           }
-          const forward = dx * dirX + dz * dirZ;
-          const across = dx * dirZ - dz * dirX;
           if (encounters) {
             // Use measured motion for impacts: intending to walk into a static queue is not an impact.
             if (distance < radius + 0.055) {
@@ -227,6 +235,9 @@ export class Steering implements LocalAvoidance {
               }
             }
           }
+          if (holding) continue;
+          const forward = dx * dirX + dz * dirZ;
+          const across = dx * dirZ - dz * dirX;
           if (!reciprocal && forward > 0 && Math.abs(across) < radius + 0.2 && forward < 1.8) {
             const otherForward = state.vx[j] * dirX + state.vz[j] * dirZ;
             const closing = preferredSpeed - otherForward;
@@ -293,6 +304,13 @@ export class Steering implements LocalAvoidance {
         brake = Math.max(brake, Math.abs(encounters.lean[id]) * 0.3);
       }
     }
+    const limit = preferredSpeed * 1.12;
+    if (holding) {
+      // A settled waiter only moves to separate touching bodies or open a landing or doorway.
+      const yieldSpeed = yieldWeight * preferredSpeed * 2;
+      limitSpeed(pushX * avoidance + yieldX * yieldSpeed, pushZ * avoidance + yieldZ * yieldSpeed, limit, result);
+      return;
+    }
     if (reciprocal) {
       // Side commitment and gaze inform intent. The half-planes supply the avoidance correction.
       const looking = !encounters || encounters.gazeLead[id] <= 0 || nearestConflictTime <= 0.65;
@@ -301,7 +319,6 @@ export class Steering implements LocalAvoidance {
       // penalty as well delays arrivals at the curb even when a forward velocity is feasible.
       brake = 0;
     }
-    const avoidance = settings.avoidanceStrength;
     let desiredX = dirX * preferredSpeed * (1 - brake * Math.min(1, avoidance));
     let desiredZ = dirZ * preferredSpeed * (1 - brake * Math.min(1, avoidance));
     desiredX += (pushX + dirZ * lateral) * avoidance;
@@ -334,12 +351,11 @@ export class Steering implements LocalAvoidance {
     if (x > b.maxX - margin) desiredX -= (x - b.maxX + margin) * 2;
     if (z < b.minZ + margin) desiredZ += (b.minZ + margin - z) * 2;
     if (z > b.maxZ - margin) desiredZ -= (z - b.maxZ + margin) * 2;
-    const speed = Math.hypot(desiredX, desiredZ), limit = preferredSpeed * 1.12;
-    if (speed > limit && speed > 0) { desiredX *= limit / speed; desiredZ *= limit / speed; }
+    limitSpeed(desiredX, desiredZ, limit, result);
     if (reciprocal) {
-      this.reciprocal.solve(id, agents, desiredX, desiredZ, context.speedLimit ?? limit, context.dt ?? FIXED_DT,
+      this.reciprocal.solve(id, agents, result.x, result.z, context.speedLimit ?? limit, context.dt ?? FIXED_DT,
         horizon, padding, context.stationary, encounters?.passSide[id] ?? 1, result);
       this.resolvedNextVelocity = true;
-    } else { result.x = desiredX; result.z = desiredZ; }
+    }
   }
 }

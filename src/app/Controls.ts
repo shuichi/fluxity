@@ -58,6 +58,8 @@ export class Controls {
   readonly canvas: HTMLCanvasElement;
   readonly statsElement: HTMLElement;
   private readonly root: HTMLElement;
+  private readonly gazeMarker: HTMLElement;
+  private readonly controlPanel: HTMLElement;
   private readonly abort = new AbortController();
   private config: SimulationConfig;
   private signalAnnouncement = '';
@@ -86,6 +88,7 @@ export class Controls {
       <main class="workspace" aria-label="Interactive crowd simulation">
         <canvas id="scene" aria-label="Interactive three-dimensional crowd" aria-describedby="camera-hint orbit-hint" tabindex="0"></canvas>
         <div class="scene-shade" aria-hidden="true"></div>
+        <div id="gaze-marker" aria-hidden="true" hidden></div>
         <aside class="control-panel" id="control-panel" aria-label="Simulation controls">
           <div class="panel-heading"><span class="eyebrow">SIMULATION</span><span class="panel-number">01—05</span></div>
           <section class="control-section scene-section">
@@ -154,7 +157,7 @@ export class Controls {
           </div>
           <div class="camera-buttons" id="person-view-controls" hidden>
             <button class="icon-button" id="return-view" type="button" aria-label="Return to previous view" aria-keyshortcuts="Escape" title="Return to previous view (Esc)">${icons.back}</button>
-            <span class="person-view-label">First person</span>
+            <span class="person-view-label">First person <span class="gaze-key">Gaze</span></span>
           </div>
           <span class="camera-hint" id="camera-hint" role="status">${personPickHint}</span>
         </nav>
@@ -172,6 +175,8 @@ export class Controls {
         </section>
       </main>`;
     this.canvas = this.get<HTMLCanvasElement>('scene');
+    this.gazeMarker = this.get('gaze-marker');
+    this.controlPanel = this.get('control-panel');
     this.statsElement = this.get('stats');
     this.setConfig(config);
     this.setSignal(undefined);
@@ -395,11 +400,27 @@ export class Controls {
     if (controls.hidden === !active) return;
     const returnFocusToScene = !active && controls.contains(document.activeElement);
     controls.hidden = !active;
+    if (!active) this.gazeMarker.hidden = true;
     this.get('camera-presets').hidden = active;
     this.get('orbit-hint').hidden = active;
-    this.get('camera-hint').textContent = active ? 'Back arrow or Esc to return' : personPickHint;
+    this.get('camera-hint').textContent = active ? 'Red ring shows gaze · Esc to return' : personPickHint;
     this.canvas.setAttribute('aria-describedby', active ? 'camera-hint' : 'camera-hint orbit-hint');
     if (returnFocusToScene) this.canvas.focus({ preventScroll: true });
+  }
+
+  /** Place the horizontal gaze bearing on the horizon, keeping it beside any panel covering the view. */
+  setGazeMarker(screenX: number): void {
+    const scene = this.canvas.getBoundingClientRect();
+    const panel = this.controlPanel.getBoundingClientRect();
+    const horizon = scene.top + scene.height / 2;
+    const panelRight = panel.top <= horizon && panel.bottom >= horizon ? Math.max(0, panel.right - scene.left) : 0;
+    const inset = 19; // Space for the ring and its outward arrow, in CSS pixels.
+    const right = scene.width - inset;
+    const left = Math.min(right, panelRight + inset);
+    const x = (screenX + 1) * scene.width / 2;
+    this.gazeMarker.style.left = `${Math.min(right, Math.max(left, x))}px`;
+    this.gazeMarker.dataset.edge = x < left ? 'left' : x > right ? 'right' : '';
+    this.gazeMarker.hidden = false;
   }
 
   setStatus(text: string, kind: 'loading' | 'ready' | 'error' = 'ready'): void {

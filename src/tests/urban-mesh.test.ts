@@ -279,7 +279,7 @@ describe('pedestrian pose upload', () => {
     current[15] = 0;
     const uploadedPose = () => {
       device.queue.writeBuffer.mockClear();
-      renderer.render(previous, current, 1, 0.25, { quality: 'balanced', debug: false });
+      renderer.render(previous, current, 1, 0.25, { quality: 'balanced', debug: false, frameSeconds: 1 / 60 });
       const upload = device.queue.writeBuffer.mock.calls.find(args => args[4] === 64)!;
       const record = new Float32Array(upload[2], 0, 16);
       return [record[15], record[11], record[1]];
@@ -317,7 +317,7 @@ describe('pedestrian picking', () => {
     const { renderer, device } = await gpuHarness();
     const frame = new Float32Array(SNAPSHOT_STRIDE);
     frame[6] = 1; frame[11] = 7; frame[12] = 1;
-    const options = { quality: 'balanced' as const, debug: false };
+    const options = { quality: 'balanced' as const, debug: false, frameSeconds: 1 / 60 };
     expect(renderer.render(frame, frame, 1, 1, options).visible).toBe(1);
     let finish!: () => void;
     device.createBuffer.mockReturnValueOnce({
@@ -336,7 +336,7 @@ describe('pedestrian picking', () => {
     renderer.destroy();
   });
 
-  it('renders the other pedestrian from the interpolated eye position of the selected one', async () => {
+  it('renders from the selected pedestrian’s eye position and projects their interpolated gaze', async () => {
     const { renderer } = await gpuHarness();
     const previous = new Float32Array(2 * SNAPSHOT_STRIDE);
     previous[6] = 1.1;
@@ -346,9 +346,11 @@ describe('pedestrian picking', () => {
     previous[SNAPSHOT_STRIDE + 12] = 1;
     const current = previous.slice();
     current[0] = 2;
-    const stats = renderer.render(previous, current, 2, 0.5, { quality: 'balanced', debug: false, followedId: 0 });
+    current[13] = 0.4;
+    const stats = renderer.render(previous, current, 2, 0.5, { quality: 'balanced', debug: false, frameSeconds: 1 / 60, followedId: 0 });
     expect(renderer.camera.position[0]).toBe(1);
     expect(renderer.camera.position[1]).toBeCloseTo(1.535 * 1.1);
+    expect(renderer.camera.gazeScreenX).toBeCloseTo(-Math.tan(0.2) * renderer.camera.projection[0]);
     expect(stats.visible).toBe(1);
     renderer.destroy();
   });
@@ -356,7 +358,7 @@ describe('pedestrian picking', () => {
   it('reads the clicked render pixel at reduced resolution, preserving ID zero and background', async () => {
     const { renderer, device, copyTextureToBuffer } = await gpuHarness();
     expect(await renderer.pickPerson(130, 256)).toBeNull();
-    renderer.render(new Float32Array(), new Float32Array(), 0, 1, { quality: 'performance', debug: false });
+    renderer.render(new Float32Array(), new Float32Array(), 0, 1, { quality: 'performance', debug: false, frameSeconds: 1 / 60 });
     expect(await renderer.pickPerson(652, 256)).toBeNull();
     expect(copyTextureToBuffer).not.toHaveBeenCalled();
     for (const [encodedId, expected] of [[0, null], [1, 0], [20000, 19999]] as const) {

@@ -2,7 +2,7 @@ import { Random } from '../math/random';
 import type { Point2 } from '../types';
 import type { AgentData } from './AgentData';
 import type { CrossingTraffic } from './CrossingTraffic';
-import type { CrosswalkFlow } from './CrosswalkFlow';
+import { FRONT_ROW_DEPTH, type CrosswalkFlow } from './CrosswalkFlow';
 import type { Direction, Navigation } from './Navigation';
 
 interface Place extends Point2 { taken: boolean }
@@ -80,7 +80,7 @@ export class ForecourtQueue {
       if (entrance.x < 14 || entrance.x > 25 || entrance.z < 17 || entrance.z > 22) return false;
       // Front rows keep their place. Later arrivals consider the density at their mouth and along its approach.
       const curb = this.crossings.nearestLanding(route, x, z);
-      if (Math.hypot(curb.x - x, curb.z - z) < 1.6) return false;
+      if (Math.hypot(curb.x - x, curb.z - z) < FRONT_ROW_DEPTH) return false;
       const apronX = 0.7 * curb.x + 0.3 * entrance.x, apronZ = 0.7 * curb.z + 0.3 * entrance.z;
       if (Math.max(this.density.cost(x, z, 0, 0), this.density.cost(apronX, apronZ, 0, 0),
         this.density.cost(curb.x, curb.z, 0, 0)) < 0.55) return false;

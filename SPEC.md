@@ -5,6 +5,7 @@
 古典的な群衆制御のゲームAIを組み合わせ、歩行の振る舞いを再現・比較できる群衆シミュレータのベースラインを作る。経路探索と局所回避が一人のしぐさや集団の流れにどう表れるかを、同じ場面で俯瞰・路上・人物追従の視点から観察できる。ブラウザ用のリアルタイム 3D シミュレータとして TypeScript とネイティブ WebGPU / WGSL で動作し、静的ファイルとして配布する。操作方法とオフライン利用の条件は [README.md](README.md) に記載する。
 
 - シナリオは渋谷、広場、双方向通路、ボトルネック、交差流の5種類。初期設定は渋谷、1,000人、シード42、自動信号、Mixed / Enhanced。画面から最大20,000人まで選べる。[設定とシナリオの型](src/types.ts)
+- 全シナリオで人物を選ぶと、その人の目の高さで歩行を追える。主観カメラは身体の向きに滑らかに追従し、身体と首の向きから求めた水平視線を赤い輪で示す。視線が表示範囲を外れたときは、その側の端に矢印を添える。[主観カメラ](src/renderer/Camera.ts)
 - 地図の出入口を通って旅程を終えた人と入れ替わり、別の出入口から新しい人が現れる。設定人数を一定に保ち、同じ人物スロットの前後の旅程は世代番号で区別する。[シナリオ定義](src/scenarios)・[出入りの実装](src/simulation/PortalFlow.ts)
 
 ## 歩行モデル
@@ -13,6 +14,7 @@
 - 全シナリオで、目的地別の距離と進行方向を格子に記録して共有する。局所回避は近傍の人の位置・速度に応じて希望速度を調整する。地形との干渉は身体の半径を含めて判定する。[経路探索](src/simulation/Navigation.ts)・[歩行更新](src/simulation/Simulation.ts)
 - 渋谷のハチ公前広場では、歩道上の経由点を結び、距離・歩道の縁までの余裕・人数密度・対向流から局所経路を選ぶ。広場の迂回は標準で有効。横断歩道に入る横位置を混雑で選ぶ **Density-guided entry** は Enhanced で既定値をオンとし、操作パネルでオフにできる。[アルゴリズム解説](docs/algorithms.html#overview)
 - 渋谷では歩行者・東西車両・南北車両の通行を信号で切り替える。赤と青点滅では歩行者の新規横断を止め、車道に残った人を歩道へ誘導する。次の方向の通行は必要な全赤時間と歩車の退避を待つ。手動の信号要求にも同じ条件を適用する。[信号制御](src/simulation/TrafficSignal.ts)
+- 横断予定者は、赤・青点滅で予定の横断口の縁石、同じ横断を待つ列の後ろ、または広場の待機位置に着くと歩みを止め、身体の向きを保つ。待機中も身体が重なれば間隔を取り、歩道への退避や戸口の通行に場所を譲る。歩行者信号が青になると、予定の横断歩道へ進む。別の横断口や歩道の角を通り過ぎる人は、歩道上で先へ進める向きを探す。[信号待ちの列](src/simulation/SignalQueue.ts)・[歩行更新](src/simulation/Simulation.ts)
 
 ## 地図と描画データ
 
@@ -21,6 +23,6 @@
 
 ## 検証範囲
 
-同一シードでの再現と有限な座標、出入口での人数維持、混雑に応じた経路選択、赤・青点滅での新規横断の抑止、スナップショットの境界は自動テストで検証する。[数値計算](src/tests/simulation.test.ts)・[旅程](src/tests/scenario-trips.test.ts)・[広場経路](src/tests/forecourt-flow.test.ts)・[横断退避](src/tests/crossing-clearance.test.ts)・[表示時系列](src/tests/timeline.test.ts)
+同一シードでの再現と有限な座標、出入口での人数維持、混雑に応じた経路選択、赤・青点滅での新規横断の抑止、信号待ちでの停止と青での再発進、スナップショットの境界は自動テストで検証する。[数値計算](src/tests/simulation.test.ts)・[旅程](src/tests/scenario-trips.test.ts)・[広場経路](src/tests/forecourt-flow.test.ts)・[信号待ち](src/tests/signal.test.ts)・[広場での待機](src/tests/forecourt-queue.test.ts)・[横断退避](src/tests/crossing-clearance.test.ts)・[表示時系列](src/tests/timeline.test.ts)
 
 自然に見えるかは、俯瞰と人物の近景で観察する。シードや人数を固定した比較映像・計測値には対象の版、条件、観測時間を添える。混雑や到達時間の数値はその条件でのシミュレーション結果として扱う。[検証記録](docs/validation.md)・[ハチ公口の経路比較](docs/results/shibuya-forecourt.md)・[横断中の行動比較](docs/results/shibuya-crossing-behavior.md)

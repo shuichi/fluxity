@@ -276,19 +276,14 @@ export class UrbanGeometry {
   canPassOnCrossing(x: number, z: number, radius: number): boolean {
     return !!this.maneuvers?.contains(x, z, radius) && !this.isSidewalk(x, z, radius);
   }
-  brakeAtCurb(x: number, z: number, direction: Direction, radius: number, makeSpace = false): boolean {
-    if (!this.sidewalks.curb(x, z, direction.x, direction.z, radius, this.walkable, this.boundary)) return false;
+  /** Brake on approach and return the remaining normal clearance to the stop line, in metres. */
+  brakeAtCurb(x: number, z: number, direction: Direction, radius: number): number {
+    if (!this.sidewalks.curb(x, z, direction.x, direction.z, radius, this.walkable, this.boundary)) return Infinity;
     const inward = direction.x * this.boundary.x + direction.z * this.boundary.z;
-    // A waiting queue takes a step back so arrivals have room to leave the road.
-    if (makeSpace && this.boundary.distance < 2.1) {
-      const backward = Math.min(1.15, 2.1 - this.boundary.distance) - inward;
-      direction.x += this.boundary.x * backward; direction.z += this.boundary.z * backward;
-      return true;
-    }
     const brake = 1 - Math.min(1, this.boundary.distance / 2.2);
     direction.x -= this.boundary.x * inward * brake;
     direction.z -= this.boundary.z * inward * brake;
-    return true;
+    return this.boundary.distance;
   }
   constrain(x: number, z: number, tx: number, tz: number, radius: number, sidewalkOnly: boolean, result: Direction,
     allowCrossingMargin = false): void {

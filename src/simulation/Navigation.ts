@@ -242,7 +242,10 @@ export class Navigation {
     return true;
   }
   direction(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction, radius = this.clearance): void {
-    if (this.urban) { this.urbanDirection(x, z, targetId, targetX, targetZ, result, radius); return; }
+    if (this.urban) {
+      if (!this.urbanDirection(x, z, targetId, targetX, targetZ, result, radius)) result.x = result.z = 0;
+      return;
+    }
     let dx = targetX - x, dz = targetZ - z;
     if (!this.lineOfSight(x, z, targetX, targetZ)) {
       const field = this.fields[targetId];
@@ -304,8 +307,9 @@ export class Navigation {
     return chosen;
   }
 
-  /** A walker pushed into the passing margin must rejoin the normal trip field on the painted surface. */
-  private visibleTripCell(x: number, z: number, cell: number, field: FlowField, radius: number, fromMargin: boolean): number {
+  /** A nearby routing cell must be visible across the selected surface or from a passing margin. */
+  private visibleTripCell(x: number, z: number, cell: number, field: FlowField, radius: number, fromMargin: boolean,
+    surface = this.urban!.walkable): number {
     const cx = cell % this.columns, cz = Math.floor(cell / this.columns), bounds = this.scenario.bounds;
     const reach = fromMargin ? 2 : 1;
     let chosen = -1, best = Infinity;
@@ -319,23 +323,29 @@ export class Navigation {
       if (score >= best) continue;
       const visible = fromMargin
         ? this.urban!.isWalkable(px, pz, radius) && this.lineOfSight(x, z, px, pz, radius, true)
-        : this.urban!.lineWalkable(x, z, px, pz, radius);
+        : surface.lineInside(x, z, px, pz, radius);
       if (visible) { chosen = next; best = score; }
     }
     return chosen;
   }
+  /** Follow a same-bank trip around a curb where its ordinary route takes a shortcut over the zebra. */
+  sidewalkDirection(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction, radius: number): boolean {
+    return !!this.urban && this.urbanDirection(x, z, targetId, targetX, targetZ, result, radius, true);
+  }
   /** Short flow-field lookahead avoids tracing a hundred-meter polygon ray for every agent. */
-  private urbanDirection(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction, radius: number): void {
+  private urbanDirection(x: number, z: number, targetId: number, targetX: number, targetZ: number, result: Direction,
+    radius: number, sidewalkOnly = false): boolean {
+    const surface = sidewalkOnly ? this.urban!.sidewalks : this.urban!.walkable;
     let dx = targetX - x, dz = targetZ - z;
-    if (dx * dx + dz * dz > 100 || !this.urban!.lineWalkable(x, z, targetX, targetZ, radius)) {
+    if (dx * dx + dz * dz > 100 || !surface.lineInside(x, z, targetX, targetZ, radius)) {
       const field = this.fields[targetId], bounds = this.scenario.bounds;
       const start = this.cellAt(x, z);
-      let cell = this.visibleTripCell(x, z, start, field, radius, false);
-      if (cell < 0 && !this.urban!.isWalkable(x, z, radius) && this.urban!.canPassOnCrossing(x, z, radius)) {
+      let cell = this.visibleTripCell(x, z, start, field, radius, false, surface);
+      if (cell < 0 && !sidewalkOnly && !this.urban!.isWalkable(x, z, radius) && this.urban!.canPassOnCrossing(x, z, radius)) {
         cell = this.visibleTripCell(x, z, start, field, radius, true);
         if (cell < 0) cell = this.nearestVisibleCell(x, z, radius);
       }
-      if (cell < 0) { result.x = result.z = 0; return; }
+      if (cell < 0) return false;
       let px = bounds.minX + (cell % this.columns + 0.5) * this.cellSize;
       let pz = bounds.minZ + (Math.floor(cell / this.columns) + 0.5) * this.cellSize;
       for (let step = 0; step < 3; step++) {
@@ -344,14 +354,16 @@ export class Navigation {
         const next = cell + oz * this.columns + ox;
         const nx = bounds.minX + (next % this.columns + 0.5) * this.cellSize;
         const nz = bounds.minZ + (Math.floor(next / this.columns) + 0.5) * this.cellSize;
-        if (!this.walkable[next] || !this.urban!.lineWalkable(x, z, nx, nz, radius)) break;
+        if (!this.walkable[next] || !surface.lineInside(x, z, nx, nz, radius)) break;
         cell = next; px = nx; pz = nz;
       }
+      if (sidewalkOnly && field.costs[cell] >= field.costs[start]) return false;
       dx = px - x; dz = pz - z;
     }
     const length = Math.hypot(dx, dz);
-    result.x = length > 1e-5 ? dx / length : 0;
-    result.z = length > 1e-5 ? dz / length : 0;
+    if (!(length > 1e-5)) return false;
+    result.x = dx / length; result.z = dz / length;
+    return true;
   }
   private buildField(targetX: number, targetZ: number): FlowField {
     const count = this.walkable.length;

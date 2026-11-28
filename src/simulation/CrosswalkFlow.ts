@@ -16,6 +16,7 @@ interface Crossing {
   forwardGroups: Map<number, GroupTrack>; reverseGroups: Map<number, GroupTrack>;
 }
 const APPROACH = 12; // Begin spreading across the mouth while still on the sidewalk.
+export const FRONT_ROW_DEPTH = 1.6;
 const BODY_CLEARANCE = 0.34;
 const NO_CROSSING = -32768;
 const ENTRY_SAMPLES = [-1.5, 1.5, 4.5, 7.5] as const;
@@ -155,6 +156,12 @@ export class CrosswalkFlow {
       if (distance < best) { nearest = point; best = distance; }
     }
     return nearest;
+  }
+
+  /** An approach near a neighboring zebra can hit its curb well before reaching this mouth. */
+  approachingMouth(route: number, x: number, z: number, curbDistance: number): boolean {
+    const landing = this.nearestLanding(route, x, z);
+    return Math.hypot(landing.x - x, landing.z - z) <= curbDistance + FRONT_ROW_DEPTH;
   }
 
   /** Follow the existing route to its first zebra midline. Cache both hits and misses by cell and destination. */

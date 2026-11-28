@@ -297,9 +297,11 @@ export class App {
         }
         const render = this.renderer.render(previous.data, current.data, current.message.count, alpha, {
             quality: this.quality, debug: this.debug, signal: current.message.signal, simulationTime: current.message.simulationTime,
+            frameSeconds: this.paused ? 0 : elapsed / 1000,
             followedId: this.followedPerson?.id,
             vehicles: { previous: previous.vehicles, current: current.vehicles },
           });
+        if (this.followedPerson) this.controls.setGazeMarker(this.renderer.camera.gazeScreenX);
         this.canPickPerson = !this.followedPerson;
         Object.assign(this.stats, render, {
           fps: 1000 / this.frameMs, frameMs: this.frameMs, count: current.message.count, paused: this.paused,

@@ -1,5 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix';
-import { clamp } from '../math/geometry';
+import { clamp, lerpAngle } from '../math/geometry';
 import { HUMAN_EYE_HEIGHT } from './HumanAnimation';
 import type { Bounds, CameraView } from '../types';
 
@@ -25,6 +25,8 @@ export interface PersonPose {
 
 export const STREET_NEAR_PLANE = 0.15;
 const CLICK_SLOP = 4; // CSS pixels, independent of render resolution.
+const PERSON_TURN_RATE = Math.PI / 2; // Radians per second of screen time.
+const PERSON_TURN_TIME = 0.25; // Seconds for small corrections to ease into a turn.
 const modified = (event: PointerEvent) => event.shiftKey || event.ctrlKey || event.altKey || event.metaKey;
 
 export class Camera {
@@ -34,6 +36,8 @@ export class Camera {
   readonly position = vec3.create();
   readonly target = vec3.fromValues(0, 0, 0);
   readonly fov = 42 * Math.PI / 180;
+  /** Horizontal NDC of the pedestrian's line of sight, pinned to the nearer edge when off-screen. */
+  gazeScreenX = 0;
   distance = 185;
   yaw = 0.62;
   elevation = 0.73;
@@ -43,14 +47,14 @@ export class Camera {
   private centerX = 0;
   private centerZ = 0;
   private drag: Drag | null = null;
-  private firstPerson = false;
-  private readonly gaze = vec3.create();
+  private personHeading?: number;
+  private readonly forwardTarget = vec3.create();
   private readonly events = new AbortController();
 
   constructor(canvas: HTMLCanvasElement, onPersonClick?: (clientX: number, clientY: number) => void) {
     const signal = this.events.signal;
     canvas.addEventListener('pointerdown', (event) => {
-      if (this.firstPerson) return;
+      if (this.personHeading !== undefined) return;
       if (!event.isPrimary || this.drag) {
         this.drag = null;
         return;
@@ -95,7 +99,7 @@ export class Camera {
     canvas.addEventListener('lostpointercapture', cancel, { signal });
     canvas.addEventListener('wheel', (event) => {
       event.preventDefault();
-      if (this.firstPerson) return;
+      if (this.personHeading !== undefined) return;
       if (this.drag) this.drag.canPick = false;
       this.distance = clamp(this.distance * Math.exp(event.deltaY * 0.001), 5, this.extent * 3.8);
     }, { passive: false, signal });
@@ -141,24 +145,36 @@ export class Camera {
     }
   }
 
-  update(aspect: number, person?: PersonPose): void {
-    this.firstPerson = person !== undefined;
+  update(aspect: number, frameSeconds = 0, person?: PersonPose): void {
+    // A larger near plane at aerial distances preserves depth precision for paving/roofs.
+    const near = person || this.distance < 35 ? STREET_NEAR_PLANE : 0.75;
+    mat4.perspectiveZO(this.projection, this.fov, aspect, near, 1400);
     if (person) {
       this.drag = null;
+      if (this.personHeading === undefined) {
+        this.personHeading = person.heading;
+      } else {
+        // Keep short steering corrections and the first frame after a long stall gentle.
+        const dt = clamp(frameSeconds, 0, 0.1);
+        const eased = lerpAngle(this.personHeading, person.heading, 1 - Math.exp(-dt / PERSON_TURN_TIME));
+        const limit = PERSON_TURN_RATE * dt;
+        this.personHeading += clamp(eased - this.personHeading, -limit, limit);
+      }
       vec3.set(this.position, person.x, (person.eyeHeight ?? HUMAN_EYE_HEIGHT) * person.scale, person.z);
-      const gazeHeading = person.heading + person.headYaw;
-      vec3.set(this.gaze, person.x + Math.sin(gazeHeading), this.position[1], person.z + Math.cos(gazeHeading));
-      mat4.lookAt(this.view, this.position, this.gaze, [0, 1, 0]);
+      vec3.set(this.forwardTarget, person.x + Math.sin(this.personHeading), this.position[1], person.z + Math.cos(this.personHeading));
+      mat4.lookAt(this.view, this.position, this.forwardTarget, [0, 1, 0]);
+      // The screen's right axis points toward decreasing world headings.
+      const bearing = this.personHeading - (person.heading + person.headYaw);
+      const side = Math.sin(bearing), depth = Math.cos(bearing);
+      this.gazeScreenX = depth > 0 ? clamp(this.projection[0] * side / depth, -1, 1) : Math.sign(side);
     } else {
+      this.personHeading = undefined;
       const horizontal = Math.cos(this.elevation) * this.distance;
       this.position[0] = this.target[0] + Math.sin(this.yaw) * horizontal;
       this.position[1] = this.target[1] + Math.sin(this.elevation) * this.distance;
       this.position[2] = this.target[2] + Math.cos(this.yaw) * horizontal;
       mat4.lookAt(this.view, this.position, this.target, [0, 1, 0]);
     }
-    // A larger near plane at aerial distances preserves depth precision for paving/roofs.
-    const near = person || this.distance < 35 ? STREET_NEAR_PLANE : 0.75;
-    mat4.perspectiveZO(this.projection, this.fov, aspect, near, 1400);
     mat4.multiply(this.viewProjection, this.projection, this.view);
   }
 
