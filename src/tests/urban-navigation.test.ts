@@ -64,6 +64,33 @@ function pedestrian(mode: 'allRed' | 'pedestrian', u: number): Simulation {
 }
 
 describe('polygon ground geometry', () => {
+  it('finds boundaries from outside the region and preserves the normal for equidistant edges', () => {
+    const region = new PolygonRegion([{ rings: [[
+      { x: -4, z: -2 }, { x: -20, z: -2 }, { x: -20, z: -8 }, { x: -4, z: -8 },
+    ]] }]);
+    const boundary = { distance: 0, x: 0, z: 0 };
+    expect(region.nearest(-20.5, -5, 1, boundary)).toBe(true);
+    expect(boundary).toEqual({ distance: 0.5, x: -1, z: 0 });
+    // Both long edges are 3 m away. The lower-z edge is visited first.
+    expect(region.nearest(-12, -5, 4, boundary)).toBe(true);
+    expect(boundary).toEqual({ distance: 3, x: 0, z: 1 });
+  });
+  it('finds no boundary when all rings are empty or degenerate', () => {
+    const region = new PolygonRegion([{ rings: [[], [{ x: -8, z: -4 }, { x: -4, z: -4 }]] }]);
+    const boundary = { distance: 0, x: 0, z: 0 };
+    expect(region.nearest(-6, -4, 3, boundary)).toBe(false);
+    expect(region.contains(-6, -4)).toBe(false);
+  });
+  it('checks body clearance across the cell boundary beside a hole', () => {
+    const region = new PolygonRegion([{ rings: [
+      [{ x: 0, z: 0 }, { x: 32, z: 0 }, { x: 32, z: 32 }, { x: 0, z: 32 }],
+      [{ x: 16, z: 8 }, { x: 16, z: 24 }, { x: 28, z: 24 }, { x: 28, z: 8 }],
+    ] }]);
+    // The walker's cell is inside; the hole begins in the next cell at x = 16.
+    expect(region.contains(15.75, 14, 0.20)).toBe(true);
+    expect(region.contains(15.75, 14, 0.30)).toBe(false);
+    expect(region.contains(22, 14)).toBe(false);
+  });
   it('handles rotated rings and holes regardless of ring winding', () => {
     for (const polygon of [walkable, { rings: walkable.rings.map(r => [...r].reverse()) }]) {
       const region = new PolygonRegion([polygon]);

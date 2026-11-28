@@ -4,6 +4,7 @@ import type { Direction } from './Navigation';
 interface Edge { ax: number; az: number; bx: number; bz: number; dx: number; dz: number; length2: number; nx: number; nz: number }
 export interface Boundary extends Direction { distance: number }
 const EPSILON = 0.00003; // Float32 positions near a boundary in a few-hundred-meter local frame.
+const BUCKET_SIZE = 4;
 const cross = (ax: number, az: number, bx: number, bz: number): number => ax * bz - az * bx;
 
 function pointSegmentDistance2(x: number, z: number, edge: Edge): number {
@@ -19,15 +20,35 @@ function intersects(ax: number, az: number, bx: number, bz: number, e: Edge): bo
   return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
+interface EdgeIndex { offsets: Uint32Array; ids: Uint32Array }
+
+/** Each cell's edge IDs occupy [offsets[cell], offsets[cell + 1]) in insertion order. */
+function packEdgeLists(lists: (number[] | undefined)[]): EdgeIndex {
+  const offsets = new Uint32Array(lists.length + 1);
+  for (let i = 0; i < lists.length; i++) offsets[i + 1] = offsets[i] + (lists[i]?.length ?? 0);
+  const ids = new Uint32Array(offsets[lists.length]);
+  for (let i = 0; i < lists.length; i++) {
+    const list = lists[i];
+    if (list) ids.set(list, offsets[i]);
+  }
+  return { offsets, ids };
+}
+
 /** Disjoint, unioned polygons with holes. Row and square indexes keep queries local. */
 export class PolygonRegion {
   private readonly edges: Edge[] = [];
-  private readonly rows = new Map<number, number[]>();
-  private readonly buckets = new Map<string, number[]>();
-  private readonly candidates: number[] = [];
+  private readonly firstRow: number;
+  private readonly rows: EdgeIndex;
+  private readonly bucketX: number;
+  private readonly bucketZ: number;
+  private readonly columns: number;
+  private readonly bucketRows: number;
+  private readonly buckets: EdgeIndex;
+  /** A cell without boundary edges is wholly inside (+1) or outside (-1). Other cells use the ray test. */
+  private readonly coverage: Int8Array;
+  private readonly candidates: Uint32Array;
   private readonly seen: Uint32Array;
   private query = 0;
-  private readonly bucketSize = 4;
   private minX = Infinity;
   private maxX = -Infinity;
   private minZ = Infinity;
@@ -49,59 +70,96 @@ export class PolygonRegion {
         const a = ring[i], b = ring[(i + 1) % ring.length], dx = b.x - a.x, dz = b.z - a.z;
         const length2 = dx * dx + dz * dz;
         if (length2 < 1e-14) continue;
-        const length = Math.sqrt(length2), id = this.edges.length;
+        const length = Math.sqrt(length2);
         this.edges.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, dx, dz, length2, nx: -dz / length * side, nz: dx / length * side });
-        const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x), minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
-        this.minX = Math.min(this.minX, minX); this.maxX = Math.max(this.maxX, maxX);
-        this.minZ = Math.min(this.minZ, minZ); this.maxZ = Math.max(this.maxZ, maxZ);
-        for (let row = Math.floor(minZ); row <= Math.floor(maxZ); row++) {
-          let entries = this.rows.get(row);
-          if (!entries) { entries = []; this.rows.set(row, entries); }
-          entries.push(id);
-        }
-        for (let z = Math.floor(minZ / this.bucketSize); z <= Math.floor(maxZ / this.bucketSize); z++) {
-          for (let x = Math.floor(minX / this.bucketSize); x <= Math.floor(maxX / this.bucketSize); x++) {
-            const key = `${x},${z}`;
-            let entries = this.buckets.get(key);
-            if (!entries) { entries = []; this.buckets.set(key, entries); }
-            entries.push(id);
-          }
-        }
+        this.minX = Math.min(this.minX, a.x, b.x); this.maxX = Math.max(this.maxX, a.x, b.x);
+        this.minZ = Math.min(this.minZ, a.z, b.z); this.maxZ = Math.max(this.maxZ, a.z, b.z);
       }
     }
+    this.firstRow = Math.floor(this.minZ);
+    this.bucketX = Math.floor(this.minX / BUCKET_SIZE);
+    this.bucketZ = Math.floor(this.minZ / BUCKET_SIZE);
+    this.columns = Math.max(0, Math.floor(this.maxX / BUCKET_SIZE) - this.bucketX + 1);
+    this.bucketRows = Math.max(0, Math.floor(this.maxZ / BUCKET_SIZE) - this.bucketZ + 1);
+    const rows = new Array<number[] | undefined>(Math.max(0, Math.floor(this.maxZ) - this.firstRow + 1));
+    const buckets = new Array<number[] | undefined>(this.columns * this.bucketRows);
+    for (let id = 0; id < this.edges.length; id++) {
+      const { ax, az, bx, bz } = this.edges[id];
+      const minZ = Math.min(az, bz), maxZ = Math.max(az, bz);
+      for (let row = Math.floor(minZ); row <= Math.floor(maxZ); row++) (rows[row - this.firstRow] ??= []).push(id);
+      const firstX = Math.floor(Math.min(ax, bx) / BUCKET_SIZE) - this.bucketX;
+      const lastX = Math.floor(Math.max(ax, bx) / BUCKET_SIZE) - this.bucketX;
+      for (let z = Math.floor(minZ / BUCKET_SIZE); z <= Math.floor(maxZ / BUCKET_SIZE); z++) {
+        const base = (z - this.bucketZ) * this.columns;
+        for (let x = firstX; x <= lastX; x++) (buckets[base + x] ??= []).push(id);
+      }
+    }
+    this.rows = packEdgeLists(rows);
+    this.buckets = packEdgeLists(buckets);
+    this.coverage = new Int8Array(buckets.length);
+    for (let z = 0; z < this.bucketRows; z++) {
+      const centerZ = (this.bucketZ + z + 0.5) * BUCKET_SIZE;
+      for (let x = 0; x < this.columns; x++) {
+        const cell = z * this.columns + x;
+        if (buckets[cell]) continue;
+        const centerX = (this.bucketX + x + 0.5) * BUCKET_SIZE;
+        const inside = centerZ >= this.minZ && centerZ <= this.maxZ && this.insideRow(centerX, centerZ);
+        this.coverage[cell] = inside ? 1 : -1;
+      }
+    }
+    this.candidates = new Uint32Array(this.edges.length);
     this.seen = new Uint32Array(this.edges.length);
   }
 
-  private collect(minX: number, minZ: number, maxX: number, maxZ: number): number[] {
-    this.candidates.length = 0;
+  private collect(minX: number, minZ: number, maxX: number, maxZ: number): number {
+    const firstX = Math.max(0, Math.floor(minX / BUCKET_SIZE) - this.bucketX);
+    const lastX = Math.min(this.columns - 1, Math.floor(maxX / BUCKET_SIZE) - this.bucketX);
+    if (firstX > lastX) return 0;
+    const firstZ = Math.max(0, Math.floor(minZ / BUCKET_SIZE) - this.bucketZ);
+    const lastZ = Math.min(this.bucketRows - 1, Math.floor(maxZ / BUCKET_SIZE) - this.bucketZ);
     this.query = (this.query + 1) >>> 0;
     if (this.query === 0) { this.seen.fill(0); this.query = 1; }
-    for (let z = Math.floor(minZ / this.bucketSize); z <= Math.floor(maxZ / this.bucketSize); z++) {
-      for (let x = Math.floor(minX / this.bucketSize); x <= Math.floor(maxX / this.bucketSize); x++) {
-        const entries = this.buckets.get(`${x},${z}`);
-        if (!entries) continue;
-        for (const id of entries) if (this.seen[id] !== this.query) {
-          this.seen[id] = this.query; this.candidates.push(id);
+    const { offsets, ids } = this.buckets;
+    let count = 0;
+    for (let z = firstZ; z <= lastZ; z++) {
+      // Adjacent cells form one span. Keep the first occurrence for equal-distance ties.
+      const base = z * this.columns;
+      const end = offsets[base + lastX + 1];
+      for (let i = offsets[base + firstX]; i < end; i++) {
+        const id = ids[i];
+        if (this.seen[id] !== this.query) {
+          this.seen[id] = this.query; this.candidates[count++] = id;
         }
       }
     }
-    return this.candidates;
+    return count;
+  }
+
+  private insideRow(x: number, z: number): boolean {
+    const row = Math.floor(z) - this.firstRow;
+    const { offsets, ids } = this.rows;
+    let inside = false;
+    for (let i = offsets[row], end = offsets[row + 1]; i < end; i++) {
+      const e = this.edges[ids[i]];
+      if ((e.az > z) !== (e.bz > z) && x < e.ax + (z - e.az) * e.dx / e.dz) inside = !inside;
+    }
+    return inside;
   }
 
   contains(x: number, z: number, radius = 0): boolean {
-    if (x < this.minX || x > this.maxX || z < this.minZ || z > this.maxZ) return false;
-    const edges = this.rows.get(Math.floor(z));
-    if (!edges) return false;
-    let inside = false;
-    for (const id of edges) {
-      const e = this.edges[id];
-      if ((e.az > z) !== (e.bz > z) && x < e.ax + (z - e.az) * e.dx / e.dz) inside = !inside;
-    }
-    if (!inside) return false;
+    if (!(x >= this.minX && x <= this.maxX && z >= this.minZ && z <= this.maxZ)) return false;
+    const cellX = Math.floor(x / BUCKET_SIZE), cellZ = Math.floor(z / BUCKET_SIZE);
+    const coverage = this.coverage[(cellZ - this.bucketZ) * this.columns + (cellX - this.bucketX)];
+    if (coverage < 0 || (coverage === 0 && !this.insideRow(x, z))) return false;
     if (radius <= EPSILON) return true;
+    if (coverage > 0) {
+      const localX = x - cellX * BUCKET_SIZE, localZ = z - cellZ * BUCKET_SIZE;
+      if (radius <= Math.min(localX, BUCKET_SIZE - localX, localZ, BUCKET_SIZE - localZ)) return true;
+    }
     const clearance2 = Math.max(0, radius - EPSILON) ** 2;
-    for (const id of this.collect(x - radius, z - radius, x + radius, z + radius)) {
-      if (pointSegmentDistance2(x, z, this.edges[id]) < clearance2) return false;
+    const count = this.collect(x - radius, z - radius, x + radius, z + radius);
+    for (let i = 0; i < count; i++) {
+      if (pointSegmentDistance2(x, z, this.edges[this.candidates[i]]) < clearance2) return false;
     }
     return true;
   }
@@ -111,8 +169,9 @@ export class PolygonRegion {
     const dx = tx - x, dz = tz - z, length2 = dx * dx + dz * dz;
     if (length2 < 1e-16) return true;
     const clearance2 = Math.max(0, radius - EPSILON) ** 2;
-    for (const id of this.collect(Math.min(x, tx) - radius, Math.min(z, tz) - radius, Math.max(x, tx) + radius, Math.max(z, tz) + radius)) {
-      const edge = this.edges[id];
+    const count = this.collect(Math.min(x, tx) - radius, Math.min(z, tz) - radius, Math.max(x, tx) + radius, Math.max(z, tz) + radius);
+    for (let i = 0; i < count; i++) {
+      const edge = this.edges[this.candidates[i]];
       if (intersects(x, z, tx, tz, edge)) return false;
       if (clearance2 <= 0) continue;
       if (pointSegmentDistance2(x, z, edge) < clearance2 || pointSegmentDistance2(tx, tz, edge) < clearance2) return false;
@@ -127,8 +186,9 @@ export class PolygonRegion {
   nearest(x: number, z: number, distance: number, result: Boundary): boolean {
     result.distance = distance; result.x = result.z = 0;
     let found = false;
-    for (const id of this.collect(x - distance, z - distance, x + distance, z + distance)) {
-      const e = this.edges[id];
+    const count = this.collect(x - distance, z - distance, x + distance, z + distance);
+    for (let i = 0; i < count; i++) {
+      const e = this.edges[this.candidates[i]];
       const t = Math.max(0, Math.min(1, ((x - e.ax) * e.dx + (z - e.az) * e.dz) / e.length2));
       const dx = x - e.ax - e.dx * t, dz = z - e.az - e.dz * t, d = Math.hypot(dx, dz);
       if (d >= result.distance) continue;
@@ -143,8 +203,9 @@ export class PolygonRegion {
   /** Ray to a curb which opens into a crossing, excluding walls and map borders. */
   curb(x: number, z: number, dx: number, dz: number, radius: number, walkable: PolygonRegion, result: Boundary): boolean {
     result.distance = Infinity;
-    for (const id of this.collect(x - 4, z - 4, x + 4, z + 4)) {
-      const e = this.edges[id], toward = -(dx * e.nx + dz * e.nz);
+    const count = this.collect(x - 4, z - 4, x + 4, z + 4);
+    for (let i = 0; i < count; i++) {
+      const e = this.edges[this.candidates[i]], toward = -(dx * e.nx + dz * e.nz);
       if (toward < 1e-6) continue;
       const determinant = cross(dx, dz, e.dx, e.dz);
       if (Math.abs(determinant) < 1e-10) continue;
